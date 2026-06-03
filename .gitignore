@@ -1,0 +1,28 @@
+# Arquivos locais e dados sensiveis
+.env
+.env.*
+*.local
+*.bak
+*.tmp
+*.log
+
+# Planilhas, documentos e evidencias administrativas
+*.xlsx
+*.xls
+*.csv
+*.ods
+*.pdf
+*.doc
+*.docx
+
+# Dados exportados do Google
+dados/
+exports/
+backup/
+backups/
+
+# Configuracoes locais de editores
+.vscode/
+.idea/
+Desktop.ini
+Thumbs.db
