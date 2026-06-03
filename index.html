@@ -1286,7 +1286,10 @@ function switchTab(tab) {
   document.getElementById('fbar').hidden = (tab !== 'etapas');
   if (tab === 'historico'  && !HIST_CARREGADO) carregarHistorico();
   if (tab === 'config') { renderEquipeConfig_(); carregarEmails_(); verificarTriggerConfig_(); }
-  if (tab === 'capacidade' && !CAP_CARREGADO)  carregarCapacidade_();
+  if (tab === 'capacidade') {
+    if (CAP_CARREGADO && CAP_DATA) renderCapacidade_();
+    else carregarCapacidade_();
+  }
   if (tab === 'fila') renderFila_();
   aplicarPerfilUI_();
 }
@@ -2916,6 +2919,8 @@ function preCarregarCapacidade_() {
     .withSuccessHandler(function(d) {
       CAP_DATA = d;
       CAP_CARREGADO = true;
+      var tabAtual = document.getElementById('tab-capacidade');
+      if (tabAtual && !tabAtual.hidden) renderCapacidade_();
     })
     .withFailureHandler(function() {
       CAP_DATA = null;
@@ -2937,6 +2942,8 @@ function atualizarCapacidadeAposMudanca_() {
     .withSuccessHandler(function(d) {
       CAP_DATA = d;
       CAP_CARREGADO = true;
+      var tabAtual = document.getElementById('tab-capacidade');
+      if (tabAtual && !tabAtual.hidden) renderCapacidade_();
     })
     .withFailureHandler(function() {
       CAP_DATA = null;
