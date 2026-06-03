@@ -1024,13 +1024,14 @@ function _getEtapasParaApp_(sess) {
     var faseEt = String(er[iE.fase] || '').trim();
     var statusEt = _normStatus_(er[iE.status]);
     if (_isEtapaContratual_(faseEt, enome)) statusEt = 'na';
+    var realizEt = statusEt === 'ok' ? _parseDate_(er[iE.realiz]) : null;
     etpPorProc[epid].push({
       linha:  j + 1,  // linha real na planilha (1-based)
       nome:   enome,
       prazo:  parseInt(er[iE.prazo]) || 0,
       status: statusEt,
       motivo: String(er[iE.motivo] || '').trim(),
-      realiz: _parseDate_(er[iE.realiz]),
+      realiz: realizEt,
       agente: String(er[iE.agente] || '').trim(),
       fase:   faseEt
     });

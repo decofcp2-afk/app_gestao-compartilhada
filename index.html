@@ -11,9 +11,17 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="format-detection" content="telephone=no">
   <meta name="msapplication-TileColor" content="#1a3a5c">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='42' fill='%231a3a5c'/%3E%3Ccircle cx='96' cy='72' r='34' fill='%23e8ecf0'/%3E%3Cpath d='M47 146c9-30 30-45 49-45s40 15 49 45' fill='%23e8ecf0'/%3E%3Cpath d='M63 72l22 22 45-48' fill='none' stroke='%2316a34a' stroke-width='16' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
-  <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='42' fill='%231a3a5c'/%3E%3Ccircle cx='96' cy='72' r='34' fill='%23e8ecf0'/%3E%3Cpath d='M47 146c9-30 30-45 49-45s40 15 49 45' fill='%23e8ecf0'/%3E%3Cpath d='M63 72l22 22 45-48' fill='none' stroke='%2316a34a' stroke-width='16' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
-  <title>AppSEL · Gestão de Etapas</title>
+  <meta name="description" content="Sistema interno da Reitoria para gestao de etapas, fila, capacidade e avisos de prazo do SEL.">
+  <meta property="og:title" content="App Gestao de Etapas - Reitoria / SEL">
+  <meta property="og:description" content="Sistema interno da Reitoria para acompanhar processos, etapas, fila e capacidade da equipe SEL.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://decofcp2-afk.github.io/app-gestao-reitoria/">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="App Gestao de Etapas - Reitoria / SEL">
+  <meta name="twitter:description" content="Sistema interno da Reitoria para acompanhar processos, etapas, fila e capacidade da equipe SEL.">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <title>App Gestao de Etapas - Reitoria / SEL</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
@@ -843,6 +851,10 @@ function motivoRetornoFila_(p) {
     .trim();
 }
 
+function motivoAtrasoExibivel_(et) {
+  return !!(et && et.status === 'ok' && et.dias > 0 && et.motivo && !/^RETORNO PARA FILA:/i.test(String(et.motivo).trim()));
+}
+
 function aplicarPerfilUI_() {
   var isChefe = isChefeAtual_();
   ['nav-fila', 'nav-historico'].forEach(function(id) {
@@ -1116,7 +1128,7 @@ function aplicarSessao_(sess) {
   AUTH_EXP = sess.exp || AUTH_EXP || 0;
   SERVIDOR = sess.nome;
   FILTRO_INICIAL_APLICADO = false;
-  localStorage.setItem('selSessao', JSON.stringify({ token: AUTH_TOKEN, exp: AUTH_EXP, nome: SERVIDOR }));
+  sessionStorage.setItem('selSessao', JSON.stringify({ token: AUTH_TOKEN, exp: AUTH_EXP, nome: SERVIDOR }));
   document.getElementById('tela-login').hidden = true;
   document.getElementById('app').hidden = false;
   document.getElementById('hdr-nome').textContent = SERVIDOR;
@@ -1203,6 +1215,7 @@ function logout() {
   if (AUTH_TOKEN) {
     try { google.script.run.logoutApp(AUTH_TOKEN); } catch(e) {}
   }
+  sessionStorage.removeItem('selSessao');
   localStorage.removeItem('selSessao');
   localStorage.removeItem('selServidor');
   localStorage.removeItem('selServidores');
@@ -1549,7 +1562,7 @@ function abrirProcesso(idx) {
       + '<div class="et-info">'
       + '<div class="et-nome">'+esc(et.nome)+'</div>'
       + '<div class="et-status">'+(SL[et.status]||et.status)+(et.agente?' · '+esc(et.agente):'')+'</div>'
-      + (et.dias>0 && et.motivo ? '<div class="et-motivo">⚠ '+esc(et.motivo.substring(0,90))+(et.motivo.length>90?'…':'')+'</div>' : '')
+      + (motivoAtrasoExibivel_(et) ? '<div class="et-motivo">⚠ '+esc(et.motivo.substring(0,90))+(et.motivo.length>90?'…':'')+'</div>' : '')
       + (prazoTxt ? '<div class="et-prazo">'+prazoTxt+(et.fim_iso?' · '+isoToDisplay(et.fim_iso):'')+'</div>'
                   : (et.fim_iso ? '<div class="et-prazo">'+isoToDisplay(et.ini_iso||'')+(et.fim_iso?' → '+isoToDisplay(et.fim_iso):'')+'</div>' : ''))
       + (et.historico && et.status === 'ok' ? '<div class="et-lock">🔒 Motivo registrado em '+et.historico.tsStr+' por '+esc(et.historico.servidor)+'</div>' : '')
@@ -1775,6 +1788,7 @@ function abrirStatusEtapa(etIdx) {
       + '<span style="font-size:18px;">'+o.icon+'</span>'+o.label+(isSel?' <span style="margin-left:auto;font-size:12px;">✓ Atual</span>':'')
       + '</button>';
   });
+  h += '<button onclick="fecharStatusEtapa()" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:13px;border-radius:12px;border:1.5px solid var(--border);background:#fff;cursor:pointer;font-size:14px;font-weight:700;color:var(--muted);">← Voltar</button>';
   h += '</div>';
   document.getElementById('st-body').innerHTML = h;
   document.getElementById('ov-st').classList.add('open');
@@ -1787,6 +1801,7 @@ function fecharStatusEtapa() {
 function confirmarStatusEtapa(novoStatus) {
   var et = PROC_ATI.etapas[ST_ETAPA_IDX];
   if (!et) return;
+  if (novoStatus === et.status) { fecharStatusEtapa(); return; }
   fecharStatusEtapa();
   google.script.run
     .withSuccessHandler(function(res) {
@@ -1854,7 +1869,7 @@ function devolverProcFilaAtual_() {
               toast('↩ Processo retornado para a fila.', 'ok');
               fecharProc();
               HIST_CARREGADO = false;
-              CAP_CARREGADO = false;
+              atualizarCapacidadeAposMudanca_();
               FILA_ORDER = []; FILA_SEL = {}; FILA_SERV = {}; FILA_D0 = {}; FILA_EXPAND = {};
               setTimeout(function() { carregarDados(); switchTab('fila'); }, 700);
             } else {
@@ -1894,7 +1909,7 @@ function regredirEtapaAtual(etIdx) {
               toast('↩ Etapa anterior reaberta.', 'ok');
               fecharProc();
               HIST_CARREGADO = false;
-              CAP_CARREGADO = false;
+              atualizarCapacidadeAposMudanca_();
               setTimeout(carregarDados, 500);
             } else {
               toast('Erro: ' + (res && res.erro ? res.erro : 'Não foi possível regredir.'), 'err');
@@ -2011,7 +2026,7 @@ function renderStep() {
         + '<div class="box-atraso"><h4>+'+diasAtraso+' dia'+(diasAtraso>1?'s':'')+' de atraso</h4>'
         + '<p>Prazo previsto: '+isoToDisplay(et.fim_iso)+' · Realizado: '+isoToDisplay(dr)+'</p></div>'
         + '<div class="field-label">Motivo do atraso <span class="field-req">*</span></div>'
-        + '<textarea class="field-input" id="inp-motivo" placeholder="Descreva objetivamente o motivo do atraso…" maxlength="300">'+esc(et.motivo||'')+'</textarea>'
+        + '<textarea class="field-input" id="inp-motivo" placeholder="Descreva objetivamente o motivo do atraso…" maxlength="300"></textarea>'
         + '<div class="char-count" id="char-cnt">0/300</div>';
     } else {
       bHTML = '<div class="step-title">✅ Sem atraso</div>'
@@ -2100,6 +2115,7 @@ function confirmarConclusao() {
           toast('✓ Etapa registrada com sucesso!', 'ok');
         }
         HIST_CARREGADO = false; // força recarregar histórico na próxima vez
+        atualizarCapacidadeAposMudanca_();
         setTimeout(carregarDados, 1200);
       } else {
         toast('Erro: ' + (res && res.erro ? res.erro : 'Tente novamente.'), 'err');
@@ -2856,6 +2872,27 @@ function carregarCapacidade_() {
     .getCapacidadeApp(AUTH_TOKEN);
 }
 
+function atualizarCapacidadeAposMudanca_() {
+  CAP_CARREGADO = false;
+  CAP_DATA = null;
+  var tab = document.getElementById('tab-capacidade');
+  if (tab && !tab.hidden) {
+    carregarCapacidade_();
+    return;
+  }
+  if (!AUTH_TOKEN) return;
+  google.script.run
+    .withSuccessHandler(function(d) {
+      CAP_DATA = d;
+      CAP_CARREGADO = true;
+    })
+    .withFailureHandler(function() {
+      CAP_DATA = null;
+      CAP_CARREGADO = false;
+    })
+    .getCapacidadeApp(AUTH_TOKEN);
+}
+
 function renderCapacidade_() {
   var cont = document.getElementById('cap-content');
   if (!cont || !CAP_DATA) return;
@@ -3212,7 +3249,8 @@ function editarEmail_(btn) {
 // ══════════════════════════════════════════════════════════════════════
 (function() {
   // Restaura sessão validada no servidor
-  var rawSess = localStorage.getItem('selSessao');
+  localStorage.removeItem('selSessao');
+  var rawSess = sessionStorage.getItem('selSessao');
   if (rawSess) {
     try {
       var sess = JSON.parse(rawSess);
