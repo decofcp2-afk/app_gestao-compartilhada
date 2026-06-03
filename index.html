@@ -40,6 +40,21 @@
     }
     html, body { height: 100%; overflow: hidden; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); font-size: 14px; }
+    body.auth-boot #tela-login,
+    body.auth-boot #app { visibility: hidden; }
+    .boot-screen {
+      position: fixed; inset: 0; z-index: 9999; background: var(--navy);
+      display: flex; align-items: center; justify-content: center;
+      color: #fff; font-size: 14px; font-weight: 700;
+    }
+    .boot-screen[hidden] { display: none; }
+    .boot-box { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+    .boot-spinner {
+      width: 34px; height: 34px; border-radius: 50%;
+      border: 3px solid rgba(255,255,255,.25); border-top-color: #fff;
+      animation: boot-spin .8s linear infinite;
+    }
+    @keyframes boot-spin { to { transform: rotate(360deg); } }
 
     /* ── Login ─────────────────────────────────────────────────── */
     #tela-login {
@@ -333,7 +348,14 @@
   </style>
   <script src="config.js"></script>
 </head>
-<body>
+<body class="auth-boot">
+
+<div id="boot-screen" class="boot-screen">
+  <div class="boot-box">
+    <div class="boot-spinner" aria-hidden="true"></div>
+    <div>Carregando...</div>
+  </div>
+</div>
 
 <!-- ══════════════════════════════ LOGIN ══════════════════════════════ -->
 <div id="tela-login">
@@ -1123,6 +1145,12 @@ function resetarSenhaEditServ() {
 // ══════════════════════════════════════════════════════════════════════
 // LOGIN / LOGOUT
 // ══════════════════════════════════════════════════════════════════════
+function concluirBoot_() {
+  document.body.classList.remove('auth-boot');
+  var boot = document.getElementById('boot-screen');
+  if (boot) boot.hidden = true;
+}
+
 function aplicarSessao_(sess) {
   AUTH_TOKEN = sess.token || AUTH_TOKEN;
   AUTH_EXP = sess.exp || AUTH_EXP || 0;
@@ -1141,8 +1169,12 @@ function aplicarSessao_(sess) {
   aplicarFiltroInicialUsuario_();
   renderPillsServ_();
   aplicarPerfilUI_();
+  concluirBoot_();
   if (sess.mustChange) abrirTrocaSenhaObrigatoria_();
-  else carregarDados();
+  else {
+    carregarDados();
+    preCarregarCapacidade_();
+  }
 }
 
 function loginAppLocal() {
@@ -1202,7 +1234,7 @@ function abrirTrocaSenhaObrigatoria_() {
       if (!nova || nova.length < 4) { toast('A senha precisa ter ao menos 4 caracteres.', 'err'); abrirTrocaSenhaObrigatoria_(); return; }
       google.script.run
         .withSuccessHandler(function(res) {
-          if (res && res.ok) { toast('Senha alterada.', 'ok'); carregarDados(); }
+          if (res && res.ok) { toast('Senha alterada.', 'ok'); carregarDados(); preCarregarCapacidade_(); }
           else { toast('Erro: ' + (res && res.erro ? res.erro : 'Não foi possível trocar a senha.'), 'err'); abrirTrocaSenhaObrigatoria_(); }
         })
         .withFailureHandler(function(e){ toast('Erro: ' + (e.message || e), 'err'); abrirTrocaSenhaObrigatoria_(); })
@@ -1231,6 +1263,7 @@ function logout() {
   document.getElementById('tab-etapas').innerHTML = '<div class="empty"><div class="ei">⏳</div><p>Carregando…</p></div>';
   document.getElementById('app').hidden = true;
   document.getElementById('tela-login').hidden = false;
+  concluirBoot_();
 }
 
 function confirmarTroca() {
@@ -2872,6 +2905,25 @@ function carregarCapacidade_() {
     .getCapacidadeApp(AUTH_TOKEN);
 }
 
+function preCarregarCapacidade_() {
+  if (!AUTH_TOKEN || CAP_CARREGADO || CAP_DATA) return;
+  var tab = document.getElementById('tab-capacidade');
+  if (tab && !tab.hidden) {
+    carregarCapacidade_();
+    return;
+  }
+  google.script.run
+    .withSuccessHandler(function(d) {
+      CAP_DATA = d;
+      CAP_CARREGADO = true;
+    })
+    .withFailureHandler(function() {
+      CAP_DATA = null;
+      CAP_CARREGADO = false;
+    })
+    .getCapacidadeApp(AUTH_TOKEN);
+}
+
 function atualizarCapacidadeAposMudanca_() {
   CAP_CARREGADO = false;
   CAP_DATA = null;
@@ -3251,10 +3303,12 @@ function editarEmail_(btn) {
   // Restaura sessão validada no servidor
   localStorage.removeItem('selSessao');
   var rawSess = sessionStorage.getItem('selSessao');
+  var restaurando = false;
   if (rawSess) {
     try {
       var sess = JSON.parse(rawSess);
       if (sess && sess.token && (!sess.exp || Date.now() < sess.exp)) {
+        restaurando = true;
         AUTH_TOKEN = sess.token;
         AUTH_EXP = sess.exp || 0;
         google.script.run
@@ -3266,6 +3320,10 @@ function editarEmail_(btn) {
           .validarSessaoApp(AUTH_TOKEN);
       }
     } catch(e) {}
+  }
+  if (!restaurando) {
+    sessionStorage.removeItem('selSessao');
+    concluirBoot_();
   }
 })();
 </script>
