@@ -2277,7 +2277,7 @@ function renderFila_() {
     + '<div style="font-size:12px;color:var(--text2);line-height:1.45;">Use esta aba para organizar processos que ainda não começaram ou que voltaram para a fila. Aqui a chefia pode ajustar prioridade, simular o D0, atribuir responsáveis, editar o nome do processo e iniciar ou reativar o andamento.</div>';
   if (isChefe_) {
     html += '<button id="btn-iniciar-fila" onclick="iniciarSelecionados_()" '
-      + 'style="width:100%;padding:13px;background:'+(nSel?'var(--navy)':'var(--border)')+';color:'+(nSel?'#fff':'var(--muted)')+';border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:'+(nSel?'pointer':'default')+';"'
+      + 'style="width:100%;margin-top:12px;padding:13px;background:'+(nSel?'var(--navy)':'var(--border)')+';color:'+(nSel?'#fff':'var(--muted)')+';border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:'+(nSel?'pointer':'default')+';"'
       + (nSel?'':' disabled')+'>'
       + (nSel ? '▶ Iniciar/Reativar ' + nSel + ' processo' + (nSel>1?'s':'') + ' selecionado'+(nSel>1?'s':'') : 'Selecione processos para iniciar')
       + '</button>';
