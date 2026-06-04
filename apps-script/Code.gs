@@ -216,8 +216,15 @@ function _calKey_(s) {
   return _calNorm_(s).replace(/\s+/g, '');
 }
 
+var _CALENDARIO_MUNICIPIO_MEMO = null;
 function _calMunicipio_() {
-  return _configProp_('SEL_MUNICIPIO_CALENDARIO', CALENDARIO_MUNICIPIO_FALLBACK);
+  // Memoiza o município por execução. Sem isso, este getProperty do
+  // PropertiesService era disparado a CADA chamada de _isFer_() — dezenas de
+  // milhares de vezes ao montar a cascata de etapas —, estourando o tempo de
+  // execução ("Tempo esgotado ao comunicar com o Apps Script").
+  if (_CALENDARIO_MUNICIPIO_MEMO !== null) return _CALENDARIO_MUNICIPIO_MEMO;
+  _CALENDARIO_MUNICIPIO_MEMO = _configProp_('SEL_MUNICIPIO_CALENDARIO', CALENDARIO_MUNICIPIO_FALLBACK);
+  return _CALENDARIO_MUNICIPIO_MEMO;
 }
 
 function _calFindCol_(header, nomes) {

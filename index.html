@@ -1601,7 +1601,7 @@ function abrirProcesso(idx) {
       + '<div class="et-info">'
       + '<div class="et-nome">'+esc(et.nome)+'</div>'
       + '<div class="et-status">'+(SL[et.status]||et.status)+(et.agente?' · '+esc(et.agente):'')+'</div>'
-      + (motivoAtrasoExibivel_(et) ? '<div class="et-motivo">⚠ '+esc(et.motivo.substring(0,90))+(et.motivo.length>90?'…':'')+'</div>' : '')
+      + (motivoAtrasoExibivel_(et) ? '<div class="et-motivo">⚠ '+esc(et.motivo.length>200?et.motivo.substring(0,200).trimEnd()+'…':et.motivo)+'</div>' : '')
       + (prazoTxt ? '<div class="et-prazo">'+prazoTxt+(et.fim_iso?' · '+isoToDisplay(et.fim_iso):'')+'</div>'
                   : (periodoEtapaHtml_(et) ? '<div class="et-prazo">'+periodoEtapaHtml_(et)+'</div>' : ''))
       + (et.historico && et.status === 'ok' ? '<div class="et-lock">🔒 Motivo registrado em '+et.historico.tsStr+' por '+esc(et.historico.servidor)+'</div>' : '')
