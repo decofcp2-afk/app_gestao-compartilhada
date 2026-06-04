@@ -2051,7 +2051,7 @@ function renderStep() {
     if (et.fim_iso && dr) {
       var fim  = new Date(et.fim_iso + 'T00:00:00');
       var real = new Date(dr + 'T00:00:00');
-      diasAtraso = Math.max(0, Math.round((real - fim) / 86400000));
+      diasAtraso = Math.max(0, _contDU_br_(fim, real));
     }
     CONC.diasAtraso = diasAtraso;
 
@@ -2227,6 +2227,19 @@ function _addDU_br_(data, dias) {
   var d = new Date(data.getTime()), n = 0;
   while (n < dias) { d.setDate(d.getDate()+1); if (d.getDay()!==0 && d.getDay()!==6 && !_isFerBR_(d)) n++; }
   return d;
+}
+function _contDU_br_(ini, fim) {
+  if (!ini || !fim) return 0;
+  var a = new Date(ini.getTime ? ini.getTime() : ini); a.setHours(0,0,0,0);
+  var b = new Date(fim.getTime ? fim.getTime() : fim); b.setHours(0,0,0,0);
+  if (b.getTime() === a.getTime()) return 0;
+  var sinal = b > a ? 1 : -1;
+  var c = 0, d = new Date(a.getTime());
+  while ((sinal > 0 && d < b) || (sinal < 0 && d > b)) {
+    d.setDate(d.getDate() + sinal);
+    if (d.getDay() !== 0 && d.getDay() !== 6 && !_isFerBR_(d)) c++;
+  }
+  return c * sinal;
 }
 function _fmtBR_(d) {
   return String(d.getDate()).padStart(2,'0') + '/' + String(d.getMonth()+1).padStart(2,'0') + '/' + d.getFullYear();
