@@ -1600,7 +1600,7 @@ function abrirProcesso(idx) {
       + '<div class="et-status">'+(SL[et.status]||et.status)+(et.agente?' · '+esc(et.agente):'')+'</div>'
       + (motivoAtrasoExibivel_(et) ? '<div class="et-motivo">⚠ '+esc(et.motivo.substring(0,90))+(et.motivo.length>90?'…':'')+'</div>' : '')
       + (prazoTxt ? '<div class="et-prazo">'+prazoTxt+(et.fim_iso?' · '+isoToDisplay(et.fim_iso):'')+'</div>'
-                  : (et.fim_iso ? '<div class="et-prazo">'+isoToDisplay(et.ini_iso||'')+(et.fim_iso?' → '+isoToDisplay(et.fim_iso):'')+'</div>' : ''))
+                  : (periodoEtapaHtml_(et) ? '<div class="et-prazo">'+periodoEtapaHtml_(et)+'</div>' : ''))
       + (et.historico && et.status === 'ok' ? '<div class="et-lock">🔒 Motivo registrado em '+et.historico.tsStr+' por '+esc(et.historico.servidor)+'</div>' : '')
       + '</div>'
       + (isAtual
@@ -2272,8 +2272,9 @@ function renderFila_() {
   var hoje = new Date(); hoje.setHours(0,0,0,0);
   var hojeStr = hoje.getFullYear()+'-'+String(hoje.getMonth()+1).padStart(2,'0')+'-'+String(hoje.getDate()).padStart(2,'0');
 
-  var html = '<div style="margin-bottom:10px;">'
-    + '<div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Simule datas, ordene por prioridade, atribua responsáveis e inicie ou reative os processos.</div>';
+  var html = '<div style="margin-bottom:12px;background:#fff;border:1px solid var(--border);border-left:4px solid var(--navy);border-radius:10px;padding:12px 13px;box-shadow:0 2px 8px rgba(15,23,42,.04);">'
+    + '<div style="font-size:15px;font-weight:800;color:var(--navy);margin-bottom:5px;">Gestão da fila</div>'
+    + '<div style="font-size:12px;color:var(--text2);line-height:1.45;">Use esta aba para organizar processos que ainda não começaram ou que voltaram para a fila. Aqui a chefia pode ajustar prioridade, simular o D0, atribuir responsáveis, editar o nome do processo e iniciar ou reativar o andamento.</div>';
   if (isChefe_) {
     html += '<button id="btn-iniciar-fila" onclick="iniciarSelecionados_()" '
       + 'style="width:100%;padding:13px;background:'+(nSel?'var(--navy)':'var(--border)')+';color:'+(nSel?'#fff':'var(--muted)')+';border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:'+(nSel?'pointer':'default')+';"'
@@ -2311,6 +2312,7 @@ function renderFila_() {
       + '<div style="display:flex;align-items:center;gap:6px;">'
       + '<span style="font-size:10px;font-weight:700;background:'+tipoBg+';color:'+tipoColor+';padding:2px 7px;border-radius:8px;white-space:nowrap;">'+tipoFila+'</span>'
       + '<span class="fila-card-nome" style="flex:1">' + esc(p.nome) + '</span>'
+      + (isChefe_ ? '<button style="border:1px solid var(--border);background:#fff;color:var(--muted);border-radius:7px;padding:3px 7px;font-size:11px;font-weight:700;cursor:pointer;" onclick="event.stopPropagation();editarNomeFila_(\''+p.id+'\')">Editar</button>' : '')
       + '</div>'
       + '<div class="fila-card-sub">' + (p.num?esc(p.num)+' · ':'') + esc(p.modal||'') + (p.req?' · '+esc(p.req):'') + '</div>'
       + (statusPreservado ? '<div style="font-size:11px;color:#475569;margin-top:4px;line-height:1.35;">Status preservado: '+esc(statusPreservado)+'</div>' : '')
@@ -2386,6 +2388,42 @@ function renderFila_() {
 function toggleFilaSel_(pid) { FILA_SEL[pid] = !FILA_SEL[pid]; renderFila_(); }
 function toggleFilaExpand_(pid) { FILA_EXPAND[pid] = !FILA_EXPAND[pid]; renderFila_(); }
 function atualizarD0Fila_(pid, val) { FILA_D0[pid] = val; renderFila_(); }
+
+function _atualizarNomeLocal_(pid, nome) {
+  [FILA_ORDER, FILA, DATA].forEach(function(lista) {
+    (lista || []).forEach(function(p) {
+      if (p && p.id === pid) p.nome = nome;
+    });
+  });
+}
+
+function editarNomeFila_(pid) {
+  if (!isChefeAtual_()) return;
+  var p = (FILA_ORDER || []).find(function(x){ return x && x.id === pid; });
+  if (!p) return;
+  dialogoCampo_({
+    titulo: 'Editar nome do processo',
+    mensagem: 'Ajuste o objeto/nome exibido na Fila, no App Gestão e no Painel.',
+    valor: p.nome || '',
+    placeholder: 'Nome do processo',
+    ok: 'Salvar'
+  }, function(novo) {
+    if (!novo || novo.length < 4) { toast('Informe um nome mais completo.', 'err'); return; }
+    google.script.run
+      .withSuccessHandler(function(res) {
+        if (res && res.ok) {
+          _atualizarNomeLocal_(pid, novo);
+          renderFila_();
+          toast('Nome do processo atualizado.', 'ok');
+          setTimeout(carregarDados, 500);
+        } else {
+          toast('Erro: ' + (res && res.erro ? res.erro : 'Não foi possível salvar.'), 'err');
+        }
+      })
+      .withFailureHandler(function(e) { toast('Erro: ' + (e.message || e), 'err'); })
+      .salvarNomeProcessoFilaApp({ processoId: pid, nome: novo, authToken: AUTH_TOKEN });
+  });
+}
 
 function moverFilaItem_(idx, dir) {
   var novoIdx = idx + dir;
@@ -2606,6 +2644,29 @@ function isoToDisplay(iso) {
   if (p.length < 3) return iso;
   var anoAtual = new Date().getFullYear().toString();
   return p[2]+'/'+p[1]+(p[0] !== anoAtual ? '/'+p[0].substring(2) : '');
+}
+
+function addDiasIso_(iso, dias) {
+  if (!iso) return '';
+  var d = new Date(String(iso).substring(0,10) + 'T00:00:00');
+  if (isNaN(d.getTime())) return '';
+  d.setDate(d.getDate() + (dias || 0));
+  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+}
+
+function periodoEtapaHtml_(et) {
+  if (!et) return '';
+  if (et.status === 'ok' && et.realizacao_iso) {
+    if (et.dias > 0 && et.fim_iso) {
+      var iniAtraso = addDiasIso_(et.fim_iso, 1);
+      return '<span style="color:var(--red)">Atraso: ' + isoToDisplay(iniAtraso) + ' -> ' + isoToDisplay(et.realizacao_iso) + '</span>';
+    }
+    return '<span style="color:var(--muted)">Realizado em ' + isoToDisplay(et.realizacao_iso) + '</span>';
+  }
+  if (et.fim_iso) {
+    return isoToDisplay(et.ini_iso || '') + (et.fim_iso ? ' -> ' + isoToDisplay(et.fim_iso) : '');
+  }
+  return '';
 }
 
 function toast(msg, tipo) {

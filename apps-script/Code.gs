@@ -697,6 +697,7 @@ function _apiCallAppSEL_(method, args) {
     atribuirResponsaveisApp: atribuirResponsaveisApp,
     atualizarStatusEtapa: atualizarStatusEtapa,
     salvarEmailProcesso: salvarEmailProcesso,
+    salvarNomeProcessoFilaApp: salvarNomeProcessoFilaApp,
     regredirEtapa: regredirEtapa,
     devolverProcessoFilaApp: devolverProcessoFilaApp,
     concluirEtapa: concluirEtapa,
@@ -2529,6 +2530,42 @@ function salvarEmailProcesso(pid, email, authToken) {
 // ── trocarServidor ────────────────────────────────────────────────────────────
 // Atualiza o servidor responsável de um processo na aba 📊 Capacidade (col A).
 // pid: ProcessoID; novoServidor: nome ou '' para remover.
+function salvarNomeProcessoFilaApp(params) {
+  return _withAppLockResult_('editar nome do processo na fila', function() {
+    try {
+      params = params || {};
+      _authRequire_(params.authToken, true);
+      var pid = String(params.processoId || '').trim();
+      var nome = String(params.nome || '').trim();
+      if (!pid) throw new Error('Processo não informado.');
+      if (nome.length < 4) throw new Error('Informe um nome mais completo.');
+      if (nome.length > 200) nome = nome.substring(0, 200).trim();
+
+      var shP = _ss_().getSheetByName(ABA_PROC);
+      if (!shP) throw new Error('Aba Processos não encontrada.');
+      var lP = _lerAba_(shP, 'ProcessoID');
+      var hP = lP.header;
+      var iId = hP.indexOf('ProcessoID');
+      var iObj = hP.indexOf('Objeto');
+      var iD0 = hP.indexOf('D0 (Data Abertura)');
+      if (iId < 0 || iObj < 0) throw new Error('Colunas ProcessoID/Objeto não encontradas.');
+
+      var dados = _getEtapasParaApp_({ isChefe: true, nome: 'Sistema' });
+      var todos = (dados.processos || []).concat(dados.filaPrevisao || []);
+      var proc = todos.find(function(p) { return p.id === pid; });
+      for (var i = lP.hIdx + 1; i < lP.values.length; i++) {
+        if (String(lP.values[i][iId] || '').trim() !== pid) continue;
+        var d0 = iD0 >= 0 ? _parseDate_(lP.values[i][iD0]) : null;
+        var podeEditar = !d0 || !proc || proc.status === 'planejamento' || proc.retornoFila;
+        if (!podeEditar) throw new Error('O nome só pode ser editado pela Fila.');
+        shP.getRange(i + 1, iObj + 1).setValue(nome);
+        return { ok: true, nome: nome };
+      }
+      throw new Error('Processo ' + pid + ' não encontrado.');
+    } catch(e) { return { ok: false, erro: e.message }; }
+  });
+}
+
 function trocarServidor(pid, novoServidor, authToken) {
   return _withAppLockResult_('trocar servidor', function() {
     try {
