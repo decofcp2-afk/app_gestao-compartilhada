@@ -654,23 +654,27 @@
       });
   }
 
-  function callApi(route, params, success, failure) {
-    success = success || function() {};
-    failure = failure || function(e) { console.error(e); };
-    if (!apiUrl) {
-      failure(new Error('Configure a URL do Apps Script em config.js antes de usar o AppSEL.'));
-      return;
-    }
-
-    var cb = '__appsel_cb_' + Date.now() + '_' + (++callbackSeq);
+  function buildApiUrl(route, params, callbackName) {
     var query = new URLSearchParams();
     query.set('route', route);
-    query.set('callback', cb);
+    if (callbackName) query.set('callback', callbackName);
     Object.keys(params || {}).forEach(function(k) {
       var val = params[k];
       if (val === undefined || val === null) return;
       query.set(k, typeof val === 'string' ? val : JSON.stringify(val));
     });
+    return apiUrl + (apiUrl.indexOf('?') >= 0 ? '&' : '?') + query.toString();
+  }
+
+  function canRetryWithJsonp(route, params) {
+    if (route === 'appsel.challenge' || route === 'appsel.loginProof') return true;
+    if (route !== 'appsel.call') return false;
+    var method = String((params && params.method) || '');
+    return /^(get|verificar|validar)/.test(method);
+  }
+
+  function callApiJsonp(route, params, success, failure) {
+    var cb = '__appsel_cb_' + Date.now() + '_' + (++callbackSeq);
 
     var script = document.createElement('script');
     script.async = true;
@@ -696,8 +700,67 @@
       cleanup();
       failure(new Error('Nao foi possivel carregar a resposta do Apps Script.'));
     };
-    script.src = apiUrl + (apiUrl.indexOf('?') >= 0 ? '&' : '?') + query.toString();
+    script.src = buildApiUrl(route, params, cb);
     document.head.appendChild(script);
+  }
+
+  function callApi(route, params, success, failure) {
+    success = success || function() {};
+    failure = failure || function(e) { console.error(e); };
+    if (!apiUrl) {
+      failure(new Error('Configure a URL do Apps Script em config.js antes de usar o AppSEL.'));
+      return;
+    }
+
+    if (!window.fetch) {
+      callApiJsonp(route, params, success, failure);
+      return;
+    }
+
+    var timeoutId;
+    var timeout = new Promise(function(_, reject) {
+      timeoutId = setTimeout(function() {
+        reject(new Error('Tempo esgotado ao comunicar com o Apps Script.'));
+      }, apiTimeoutMs);
+    });
+
+    var request = fetch(buildApiUrl(route, params), {
+      method: 'GET',
+      cache: 'no-store',
+      credentials: 'omit',
+      redirect: 'follow'
+    })
+      .then(function(resp) {
+        if (!resp.ok) {
+          throw new Error('Apps Script respondeu HTTP ' + resp.status + '.');
+        }
+        return resp.text();
+      })
+      .then(function(txt) {
+        try {
+          return JSON.parse(txt);
+        } catch(e) {
+          throw new Error('A resposta do Apps Script nao veio em JSON valido.');
+        }
+      });
+
+    Promise.race([request, timeout])
+      .then(function(payload) {
+        clearTimeout(timeoutId);
+        if (payload && payload.__apiError) failure(asError(payload));
+        else success(payload);
+      })
+      .catch(function(err) {
+        clearTimeout(timeoutId);
+        if (canRetryWithJsonp(route, params)) {
+          if (window.console && console.warn) {
+            console.warn('Fetch do Apps Script falhou; usando JSONP.', err);
+          }
+          callApiJsonp(route, params, success, failure);
+          return;
+        }
+        failure(asError(err));
+      });
   }
 
   function callApiPromise(route, params) {
