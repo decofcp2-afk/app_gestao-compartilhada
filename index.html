@@ -1684,10 +1684,15 @@ function abrirProcesso(idx) {
 
   var footer = document.getElementById('proc-footer');
   atualizarBotaoSuap_(p);
-  var temEmail = p.emailR && p.emailR.indexOf('@') > 0;
-  document.getElementById('btn-email-proc-label').textContent =
-    temEmail ? 'Editar e-mail do requisitante: ' + p.emailR : 'Adicionar e-mail do requisitante';
-  document.getElementById('btn-email-proc').style.color = temEmail ? 'var(--green)' : 'var(--amber)';
+  var btnEmailProc = document.getElementById('btn-email-proc');
+  var processoConcluido = p.status === 'ok';
+  btnEmailProc.hidden = processoConcluido;
+  if (!processoConcluido) {
+    var temEmail = p.emailR && p.emailR.indexOf('@') > 0;
+    document.getElementById('btn-email-proc-label').textContent =
+      temEmail ? 'Editar e-mail do requisitante: ' + p.emailR : 'Adicionar e-mail do requisitante';
+    btnEmailProc.style.color = temEmail ? 'var(--green)' : 'var(--amber)';
+  }
   var btnVoltarFila = document.getElementById('btn-voltar-fila');
   if (btnVoltarFila) {
     btnVoltarFila.hidden = !(isChefeAtual_() && p.status !== 'ok' && p.status !== 'planejamento' && !isRetornoFila_(p));
