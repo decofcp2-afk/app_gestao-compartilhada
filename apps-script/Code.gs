@@ -246,6 +246,18 @@ function _calMunicipioOk_(valor, municipioAlvo) {
   return !m || m === 'TODOS' || m === _calNorm_(municipioAlvo);
 }
 
+function _calSheet_() {
+  var ss = _ss_();
+  var sh = ss.getSheetByName(ABA_CAL);
+  if (sh) return sh;
+  var alvo = _calKey_(ABA_CAL);
+  var achada = null;
+  ss.getSheets().forEach(function(s) {
+    if (!achada && _calKey_(s.getName()) === alvo) achada = s;
+  });
+  return achada;
+}
+
 function _calendarioFeriadosMap_() {
   var municipio = _calMunicipio_();
   var agora = Date.now();
@@ -257,7 +269,7 @@ function _calendarioFeriadosMap_() {
 
   var datas = {};
   try {
-    var sh = _ss_().getSheetByName(ABA_CAL);
+    var sh = _calSheet_();
     if (!sh || sh.getLastRow() < 2) {
       _CALENDARIO_CACHE = { municipio: municipio, ts: agora, datas: datas };
       return datas;
