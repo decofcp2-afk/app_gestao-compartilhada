@@ -76,6 +76,7 @@ Use `CHECKLIST_PUBLICACAO.md` como roteiro curto. O resumo e:
 3. Em `Configuracoes do projeto > Propriedades do script`, cadastre:
    - `SEL_SS_ID`: ID real da planilha.
    - `SEL_CHEFIA_EMAIL`: e-mail institucional da chefia, se necessario.
+   - `SEL_MUNICIPIO_CALENDARIO`: municipio usado nos feriados locais, por exemplo `Rio de Janeiro`.
 4. Implante como Web App:
    - Executar como: `Eu`.
    - Quem pode acessar: `Qualquer pessoa`.
@@ -83,6 +84,32 @@ Use `CHECKLIST_PUBLICACAO.md` como roteiro curto. O resumo e:
 6. Cole essa URL em `config.js`, no campo `apiUrl`.
 7. Mantenha `apiTimeoutMs` em `90000`, salvo se o Apps Script precisar de outro tempo de espera.
 8. Publique este repositorio no GitHub Pages em `main` + `/(root)`.
+
+## Calendario de feriados oficiais
+
+O calculo de dias uteis usa sabado, domingo, feriados nacionais fixos e, quando existir, a aba `Calendario` da planilha.
+
+A aba deve ter estas colunas:
+
+```text
+Data | Nome | Tipo | Municipio | AfetaPrazo | Fonte | Observacao
+```
+
+Regras:
+
+- `Tipo` precisa conter `Feriado`; linhas de `Ponto facultativo` sao ignoradas nesta versao.
+- `AfetaPrazo` precisa ser `Sim` para a data entrar no calculo.
+- Use `Municipio = TODOS` para feriados nacionais e estaduais do RJ.
+- Use `Municipio = Rio de Janeiro`, `Niteroi` ou `Duque de Caxias` quando o feriado for local.
+- Se a aba nao existir ou estiver vazia, o app continua funcionando com o fallback de feriados nacionais fixos.
+
+Fontes recomendadas:
+
+- Feriados nacionais: Gov.br / MGI.
+- Feriados estaduais do RJ: ALERJ / Lei RJ 5.645/2010.
+- Feriados municipais: prefeitura ou diario oficial do municipio.
+
+Pontos facultativos podem ser avaliados no futuro, mas nao fazem parte da regra atual para evitar distorcao de prazos.
 
 ## Rotas do Apps Script
 

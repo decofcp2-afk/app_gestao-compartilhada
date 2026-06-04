@@ -783,6 +783,8 @@ var AUTH_TOKEN = '';
 var AUTH_EXP   = 0;
 var DATA       = [];
 var FILA       = [];   // processos sem D0 (fila de prioridades)
+var CALENDARIO_FERIADOS = {};
+var CALENDARIO_MUNICIPIO = String((window.APPSEL_CONFIG && window.APPSEL_CONFIG.municipioCalendario) || 'Rio de Janeiro');
 var HIST       = [];
 var CAP_DATA   = null;
 var PROC_ATI   = null;
@@ -1325,6 +1327,7 @@ function carregarDados() {
     .verificarTriggerAvisos(AUTH_TOKEN);
   google.script.run
     .withSuccessHandler(function(d) {
+      if (d && d.calendario) aplicarCalendario_(d.calendario);
       if (d && d.processos) { DATA = d.processos; FILA = d.filaPrevisao || []; }
       else { DATA = d || []; FILA = []; }
       aplicarFiltros();
@@ -2219,8 +2222,23 @@ var FILA_EXPAND = {};  // {pid: true} — etapas expandidas
 
 // ── Helpers de calendário (espelha o GS) ─────────────────────────────
 var _FERIADOS_BR = ['01-01','04-21','05-01','09-07','10-12','11-02','11-15','11-20','12-25'];
+function _isoLocalDate_(d) {
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+function aplicarCalendario_(cal) {
+  var mapa = {};
+  if (cal && Array.isArray(cal.feriados)) {
+    cal.feriados.forEach(function(iso) {
+      iso = String(iso || '').substring(0, 10);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) mapa[iso] = true;
+    });
+  }
+  CALENDARIO_FERIADOS = mapa;
+  if (cal && cal.municipio) CALENDARIO_MUNICIPIO = String(cal.municipio);
+}
 function _isFerBR_(d) {
-  return _FERIADOS_BR.indexOf(String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')) >= 0;
+  return _FERIADOS_BR.indexOf(String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')) >= 0 ||
+    !!CALENDARIO_FERIADOS[_isoLocalDate_(d)];
 }
 function _addDU_br_(data, dias) {
   if (dias <= 0) return new Date(data.getTime());
@@ -2426,6 +2444,8 @@ function editarNomeFila_(pid) {
       .withSuccessHandler(function(res) {
         if (res && res.ok) {
           _atualizarNomeLocal_(pid, novo);
+          CAP_DATA = null;
+          CAP_CARREGADO = false;
           renderFila_();
           toast('Nome do processo atualizado.', 'ok');
           setTimeout(carregarDados, 500);

@@ -31,6 +31,7 @@ var DIAS_AVISO = 3; // dias úteis de antecedência para enviar aviso de prazo
 var AVISO_HORA = 10;
 var AVISO_MINUTO = 30;
 var AVISO_HORA_LABEL = '10h30';
+var CALENDARIO_MUNICIPIO_FALLBACK = 'Rio de Janeiro';
 // ─────────────────────────────────────────────────────────────────────────
 
 // Configuração sustentável:
@@ -198,14 +199,120 @@ function _authRequire_(token, chefe, allowMustChange) {
 var ABA_PROC = '🏛 Processos';
 var ABA_ETP  = '🗓 Etapas';
 var ABA_HIST = '__historico_motivos'; // aba oculta, append-only
+var ABA_CAL  = 'Calendario';
 
 // ── Feriados nacionais fixos (MM-DD) ─────────────────────────────────────
 var _FERIADOS = ['01-01','04-21','05-01','09-07','10-12','11-02','11-15','11-20','12-25'];
+var _CALENDARIO_CACHE = null;
+var _CALENDARIO_CACHE_MS = 5 * 60 * 1000;
 
-function _isFer_(d) {
+function _calNorm_(s) {
+  return String(s || '').trim().toUpperCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Z0-9]+/g, ' ');
+}
+
+function _calKey_(s) {
+  return _calNorm_(s).replace(/\s+/g, '');
+}
+
+function _calMunicipio_() {
+  return _configProp_('SEL_MUNICIPIO_CALENDARIO', CALENDARIO_MUNICIPIO_FALLBACK);
+}
+
+function _calFindCol_(header, nomes) {
+  var alvo = {};
+  nomes.forEach(function(n) { alvo[_calKey_(n)] = true; });
+  for (var i = 0; i < header.length; i++) {
+    if (alvo[_calKey_(header[i])]) return i;
+  }
+  return -1;
+}
+
+function _calTipoFeriado_(tipo) {
+  var n = _calNorm_(tipo);
+  return n.indexOf('FERIADO') >= 0 &&
+    n.indexOf('FACULTATIVO') < 0 &&
+    n.indexOf('PONTO') < 0;
+}
+
+function _calAfetaPrazo_(valor) {
+  var n = _calNorm_(valor);
+  return n === 'SIM' || n === 'S' || n === 'TRUE' || n === '1';
+}
+
+function _calMunicipioOk_(valor, municipioAlvo) {
+  var m = _calNorm_(valor);
+  return !m || m === 'TODOS' || m === _calNorm_(municipioAlvo);
+}
+
+function _calendarioFeriadosMap_() {
+  var municipio = _calMunicipio_();
+  var agora = Date.now();
+  if (_CALENDARIO_CACHE &&
+      _CALENDARIO_CACHE.municipio === municipio &&
+      (agora - _CALENDARIO_CACHE.ts) < _CALENDARIO_CACHE_MS) {
+    return _CALENDARIO_CACHE.datas;
+  }
+
+  var datas = {};
+  try {
+    var sh = _ss_().getSheetByName(ABA_CAL);
+    if (!sh || sh.getLastRow() < 2) {
+      _CALENDARIO_CACHE = { municipio: municipio, ts: agora, datas: datas };
+      return datas;
+    }
+    var values = sh.getDataRange().getValues();
+    var headerRow = -1;
+    for (var r = 0; r < values.length; r++) {
+      if (_calFindCol_(values[r], ['Data']) >= 0) { headerRow = r; break; }
+    }
+    if (headerRow < 0) {
+      _CALENDARIO_CACHE = { municipio: municipio, ts: agora, datas: datas };
+      return datas;
+    }
+    var h = values[headerRow];
+    var iData = _calFindCol_(h, ['Data']);
+    var iTipo = _calFindCol_(h, ['Tipo']);
+    var iMun  = _calFindCol_(h, ['Municipio', 'Município']);
+    var iAfeta = _calFindCol_(h, ['AfetaPrazo', 'Afeta Prazo']);
+    if (iData < 0 || iTipo < 0 || iAfeta < 0) {
+      _CALENDARIO_CACHE = { municipio: municipio, ts: agora, datas: datas };
+      return datas;
+    }
+    for (var linha = headerRow + 1; linha < values.length; linha++) {
+      var row = values[linha];
+      var d = _parseDate_(row[iData]);
+      if (!d) continue;
+      if (!_calTipoFeriado_(row[iTipo])) continue;
+      if (!_calAfetaPrazo_(row[iAfeta])) continue;
+      if (!_calMunicipioOk_(iMun >= 0 ? row[iMun] : 'TODOS', municipio)) continue;
+      datas[_toIso_(d)] = true;
+    }
+  } catch(e) {
+    datas = {};
+  }
+
+  _CALENDARIO_CACHE = { municipio: municipio, ts: agora, datas: datas };
+  return datas;
+}
+
+function _calendarioPayload_() {
+  var mapa = _calendarioFeriadosMap_();
+  return {
+    municipio: _calMunicipio_(),
+    feriados: Object.keys(mapa).sort()
+  };
+}
+
+function _isFerFixo_(d) {
   return _FERIADOS.indexOf(
     String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0')
   ) >= 0;
+}
+
+function _isFer_(d) {
+  return _isFerFixo_(d) || !!_calendarioFeriadosMap_()[_toIso_(d)];
 }
 
 function _addDU_(data, dias) {
@@ -1189,7 +1296,7 @@ function _getEtapasParaApp_(sess) {
     return fp;
   });
 
-  return { processos: resultado, filaPrevisao: sess.isChefe ? filaPrevisao : [] };
+  return { processos: resultado, filaPrevisao: sess.isChefe ? filaPrevisao : [], calendario: _calendarioPayload_() };
 }
 
 // ── iniciarProcessos ──────────────────────────────────────────────────────
@@ -2159,6 +2266,8 @@ function _sincronizarCapacidadeComEtapas_() {
     if (regHdr < 0) return { criados: 0, reativados: 0 };
     var hC = capData[regHdr].map(function(v){ return String(v).trim(); });
     var iAtivo = hC.indexOf('Ativo');
+    var iObjC = hC.indexOf('Processo / Objeto');
+    if (iObjC < 0) iObjC = hC.indexOf('Objeto');
     if (iAtivo < 0) return { criados: 0, reativados: 0 };
 
     var capMap = {};
@@ -2172,7 +2281,12 @@ function _sincronizarCapacidadeComEtapas_() {
       if (!pid) continue;
       var fase = String(row[5] || '').trim().toLowerCase();
       var kind = fase.indexOf('ext') >= 0 ? 'ext' : 'int';
-      capMap[pid + '|' + kind] = { row: r + 1, ativo: row[3], servidor: serv };
+      capMap[pid + '|' + kind] = {
+        row: r + 1,
+        ativo: row[3],
+        servidor: serv,
+        objeto: iObjC >= 0 ? String(row[iObjC] || '').trim() : ''
+      };
     }
 
     var criados = 0, reativados = 0;
@@ -2228,6 +2342,10 @@ function _sincronizarCapacidadeComEtapas_() {
       }
 
       if (capMap[key]) {
+        if (iObjC >= 0 && proc.nome && capMap[key].objeto !== proc.nome) {
+          shC.getRange(capMap[key].row, iObjC + 1).setValue(proc.nome);
+          capMap[key].objeto = proc.nome;
+        }
         if (_normServidorNome_(capMap[key].servidor) !== agenteKey) {
           var cellServ = shC.getRange(capMap[key].row, 1);
           var dvServ = cellServ.getDataValidation();
@@ -2323,7 +2441,7 @@ function getCapacidadeApp(authToken) {
   }
 
   // Mapa pid → emailR lido de fProcessos para enriquecer os registros de capacidade
-  var emailMapCap = {};
+  var procInfoMapCap = {};
   (function() {
     var ss2 = _ss_();
     var shP = ss2.getSheetByName(ABA_PROC);
@@ -2332,11 +2450,17 @@ function getCapacidadeApp(authToken) {
     var hP2 = lP2.header;
     var iId = hP2.indexOf('ProcessoID');
     var iEm = hP2.indexOf('EmailRequisitante');
-    if (iId < 0 || iEm < 0) return;
+    var iObj = hP2.indexOf('Objeto');
+    if (iId < 0) return;
     for (var rr2 = lP2.hIdx + 1; rr2 < lP2.values.length; rr2++) {
       var rowP = lP2.values[rr2];
       var pid2 = String(rowP[iId]||'').trim();
-      if (pid2) emailMapCap[pid2] = String(rowP[iEm]||'').trim();
+      if (pid2) {
+        procInfoMapCap[pid2] = {
+          emailR: iEm >= 0 ? String(rowP[iEm]||'').trim() : '',
+          objeto: iObj >= 0 ? String(rowP[iObj]||'').trim() : ''
+        };
+      }
     }
   })();
 
@@ -2475,11 +2599,12 @@ function getCapacidadeApp(authToken) {
       var pts11 = parseNum_(row2[6]);
       var pts12 = parseNum_(row2[7]);
       var pts23 = parseNum_(row2[8]);
+      var procInfo = procInfoMapCap[pid] || {};
       var rec  = {
         linha:    r2 + 1,
         pid:      pid,
         servidor: titleCase_(serv),
-        objeto:   String(row2[1]||'').trim(),
+        objeto:   procInfo.objeto || String(row2[1]||'').trim(),
         modal:    String(row2[4]||'').trim(),
         fase:     fase,
         ativo:    _isSim_(row2[3]) ? 'Sim' : 'Não',
@@ -2487,7 +2612,7 @@ function getCapacidadeApp(authToken) {
         pts12:    pts12,
         pts23:    pts23,
         total:    round1_(pts11 + pts12 + pts23),
-        emailR:   emailMapCap[pid] || '',
+        emailR:   procInfo.emailR || '',
         concluido: !!procConcluidoCap[pid]
       };
       if (faseKind === 'ext') registrosExt.push(rec);
@@ -2530,6 +2655,35 @@ function salvarEmailProcesso(pid, email, authToken) {
 // ── trocarServidor ────────────────────────────────────────────────────────────
 // Atualiza o servidor responsável de um processo na aba 📊 Capacidade (col A).
 // pid: ProcessoID; novoServidor: nome ou '' para remover.
+function _atualizarObjetoCapacidade_(pid, nome) {
+  var ss = _ss_();
+  var sh = null;
+  ss.getSheets().forEach(function(s) {
+    if (/capacidade/i.test(s.getName())) sh = s;
+  });
+  if (!sh) return 0;
+  var data = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getValues();
+  var regHdr = -1;
+  for (var r = 0; r < data.length; r++) {
+    var rr = data[r].map(function(c){ return String(c).trim(); });
+    if (rr[0].indexOf('Servidor') >= 0 && rr[2] === 'ProcessoID') { regHdr = r; break; }
+  }
+  if (regHdr < 0) return 0;
+  var h = data[regHdr].map(function(c){ return String(c).trim(); });
+  var iPid = h.indexOf('ProcessoID');
+  var iObj = h.indexOf('Processo / Objeto');
+  if (iObj < 0) iObj = h.indexOf('Objeto');
+  if (iPid < 0 || iObj < 0) return 0;
+  var atualizados = 0;
+  for (var i = regHdr + 1; i < data.length; i++) {
+    if (String(data[i][iPid] || '').trim() === pid) {
+      sh.getRange(i + 1, iObj + 1).setValue(nome);
+      atualizados++;
+    }
+  }
+  return atualizados;
+}
+
 function salvarNomeProcessoFilaApp(params) {
   return _withAppLockResult_('editar nome do processo na fila', function() {
     try {
@@ -2559,6 +2713,8 @@ function salvarNomeProcessoFilaApp(params) {
         var podeEditar = !d0 || !proc || proc.status === 'planejamento' || proc.retornoFila;
         if (!podeEditar) throw new Error('O nome só pode ser editado pela Fila.');
         shP.getRange(i + 1, iObj + 1).setValue(nome);
+        _atualizarObjetoCapacidade_(pid, nome);
+        _limparCacheCapacidade_();
         return { ok: true, nome: nome };
       }
       throw new Error('Processo ' + pid + ' não encontrado.');

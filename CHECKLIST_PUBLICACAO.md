@@ -7,6 +7,7 @@
 - Em propriedades do script, configurar:
   - `SEL_SS_ID`: ID real da planilha.
   - `SEL_CHEFIA_EMAIL`: e-mail institucional da chefia, se necessario.
+  - `SEL_MUNICIPIO_CALENDARIO`: municipio dos feriados locais, por exemplo `Rio de Janeiro`.
 - Salvar.
 - Implantar como Web App:
   - Executar como: `Eu`.

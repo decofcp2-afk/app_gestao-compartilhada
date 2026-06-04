@@ -3,6 +3,10 @@ window.APPSEL_CONFIG = {
   // Exemplo: https://script.google.com/macros/s/SEU_ID_DE_IMPLANTACAO/exec
   apiUrl: "https://script.google.com/macros/s/AKfycbysFfbpofy4bf0qODi429gKX0dd621Si08_P9_e4nBajeuth1UV8cD4gu8JKtR2_TWcYw/exec",
 
+  // Municipio usado para simular prazos no navegador. O Apps Script tambem
+  // deve ter SEL_MUNICIPIO_CALENDARIO com o mesmo valor.
+  municipioCalendario: "Rio de Janeiro",
+
   // Tempo maximo de espera das chamadas ao Apps Script.
   apiTimeoutMs: 90000
 };
