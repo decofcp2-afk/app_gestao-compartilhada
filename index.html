@@ -128,7 +128,7 @@
     .notif-item-inpilha { margin: 0 8px 7px; }
     .notif-item-inpilha:first-of-type { margin-top: 8px; }
     .user-chip { background: rgba(255,255,255,.15); border-radius: 20px; padding: 5px 11px; font-size: 12px; cursor: pointer; white-space: nowrap; position: relative; }
-    .hdr-menu { position: absolute; top: calc(100% + 8px); right: 0; background: var(--card); border-radius: 12px; box-shadow: 0 4px 16px rgba(0,0,0,.18); min-width: 170px; z-index: 500; overflow: hidden; }
+    .hdr-menu { position: absolute; top: calc(100% + 8px); right: 0; background: var(--card); border-radius: 12px; box-shadow: 0 4px 16px rgba(0,0,0,.18); min-width: 220px; z-index: 500; overflow: hidden; }
     .hdr-menu-item { display: flex; align-items: center; gap: 10px; padding: 12px 16px; font-size: 13px; font-weight: 600; cursor: pointer; color: var(--text); border: none; background: none; width: 100%; text-align: left; }
     .hdr-menu-item:active { background: var(--bg); }
     .hdr-menu-sep { height: 1px; background: var(--border); margin: 0; }
@@ -441,6 +441,8 @@
       <div id="hdr-menu" class="hdr-menu" hidden onclick="event.stopPropagation()">
         <button class="hdr-menu-item" id="hdr-config-item" onclick="switchTab('config');toggleHdrMenu_()">⚙️ Configurações</button>
         <div class="hdr-menu-sep" id="hdr-config-sep"></div>
+        <button class="hdr-menu-item" id="hdr-pwa-notif-item" onclick="ativarNotificacoesPwa_();toggleHdrMenu_()">🔔 Ativar avisos no aparelho</button>
+        <div class="hdr-menu-sep" id="hdr-pwa-notif-sep"></div>
         <button class="hdr-menu-item" onclick="confirmarTroca();toggleHdrMenu_()">🔄 Trocar usuário</button>
       </div>
     </div>
@@ -925,6 +927,8 @@ var STEP       = 0;
 var HIST_CARREGADO = false;
 var CAP_CARREGADO  = false;
 var TRIGGER_STATUS = null; // null=desconhecido, true=instalado, false=não instalado
+var PWA_NOTIF_PROMPT_ABERTO = false;
+var PWA_INSTALL_PROMPT = null;
 
 // Filtros
 var F_MODAL = '';
@@ -1031,6 +1035,7 @@ function aplicarPerfilUI_() {
   var fab = document.getElementById('fab-novo');
   var tabEtapas = document.getElementById('tab-etapas');
   if (fab && tabEtapas) fab.hidden = !isChefe || tabEtapas.hidden;
+  atualizarMenuNotificacoesPwa_();
 }
 
 function aplicarFiltroInicialUsuario_() {
@@ -1308,6 +1313,7 @@ function aplicarSessao_(sess) {
   else {
     carregarDados();
     preCarregarCapacidade_();
+    agendarPromptNotificacoesPwa_('login');
   }
 }
 
@@ -1368,7 +1374,7 @@ function abrirTrocaSenhaObrigatoria_() {
       if (!nova || nova.length < 4) { toast('A senha precisa ter ao menos 4 caracteres.', 'err'); abrirTrocaSenhaObrigatoria_(); return; }
       google.script.run
         .withSuccessHandler(function(res) {
-          if (res && res.ok) { toast('Senha alterada.', 'ok'); carregarDados(); preCarregarCapacidade_(); }
+          if (res && res.ok) { toast('Senha alterada.', 'ok'); carregarDados(); preCarregarCapacidade_(); agendarPromptNotificacoesPwa_('login'); }
           else { toast('Erro: ' + (res && res.erro ? res.erro : 'Não foi possível trocar a senha.'), 'err'); abrirTrocaSenhaObrigatoria_(); }
         })
         .withFailureHandler(function(e){ toast('Erro: ' + (e.message || e), 'err'); abrirTrocaSenhaObrigatoria_(); })
@@ -1432,6 +1438,7 @@ function toggleHdrMenu_() {
   var m = document.getElementById('hdr-menu');
   m.hidden = !m.hidden;
   if (!m.hidden) {
+    atualizarMenuNotificacoesPwa_();
     // Fecha ao clicar fora
     setTimeout(function() {
       document.addEventListener('click', function _cl() {
@@ -1445,6 +1452,226 @@ function toggleHdrMenu_() {
 // ══════════════════════════════════════════════════════════════════════
 // CENTRAL DE NOTIFICAÇÕES
 // ══════════════════════════════════════════════════════════════════════
+function pwaDisplayMode_() {
+  try {
+    if (window.matchMedia && window.matchMedia('(display-mode: fullscreen)').matches) return 'fullscreen';
+    if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) return 'standalone';
+    if (window.matchMedia && window.matchMedia('(display-mode: minimal-ui)').matches) return 'minimal-ui';
+    if (window.navigator && window.navigator.standalone) return 'standalone-ios';
+  } catch(e) {}
+  return 'browser';
+}
+
+function pwaFoiInstalado_() {
+  return pwaDisplayMode_() !== 'browser' || localStorage.getItem('appselPwaInstalled') === '1';
+}
+
+function pwaSuportaNotificacoes_() {
+  return !!(window.isSecureContext && 'Notification' in window && 'serviceWorker' in navigator);
+}
+
+function pwaLocalKey_(sufixo) {
+  return 'appselPwa:' + encodeURIComponent(SERVIDOR || 'anon') + ':' + sufixo;
+}
+
+function pwaDeviceId_() {
+  var key = 'appselPwaDeviceId';
+  var id = localStorage.getItem(key);
+  if (id) return id;
+  if (window.crypto && crypto.randomUUID) {
+    id = crypto.randomUUID();
+  } else {
+    var arr = new Uint8Array(16);
+    if (window.crypto && crypto.getRandomValues) crypto.getRandomValues(arr);
+    else for (var i = 0; i < arr.length; i++) arr[i] = Math.floor(Math.random() * 256);
+    id = Array.prototype.map.call(arr, function(b) { return ('0' + b.toString(16)).slice(-2); }).join('');
+  }
+  localStorage.setItem(key, id);
+  return id;
+}
+
+function atualizarMenuNotificacoesPwa_() {
+  var btn = document.getElementById('hdr-pwa-notif-item');
+  if (!btn) return;
+  if (!pwaSuportaNotificacoes_()) {
+    btn.textContent = 'Avisos indisponiveis';
+  } else if (!pwaFoiInstalado_()) {
+    btn.textContent = 'Instalar app para avisos';
+  } else if (Notification.permission === 'granted') {
+    btn.textContent = 'Avisos do aparelho ativos';
+  } else if (Notification.permission === 'denied') {
+    btn.textContent = 'Avisos bloqueados';
+  } else {
+    btn.textContent = 'Ativar avisos no aparelho';
+  }
+}
+
+function registrarDispositivoPwa_(permissao, origem, silencioso) {
+  if (!AUTH_TOKEN) return;
+  var payload = {
+    authToken: AUTH_TOKEN,
+    deviceId: pwaDeviceId_(),
+    plataforma: (navigator.platform || ''),
+    userAgent: (navigator.userAgent || ''),
+    displayMode: pwaDisplayMode_(),
+    instalado: pwaFoiInstalado_(),
+    permissao: permissao || (pwaSuportaNotificacoes_() ? Notification.permission : 'unsupported'),
+    suportePush: !!(navigator.serviceWorker && window.PushManager),
+    origem: origem || 'app'
+  };
+  google.script.run
+    .withSuccessHandler(function(r) {
+      if (!silencioso && r && !r.ok) toast('Nao consegui registrar o aparelho: ' + (r.erro || 'falha no Apps Script'), 'err');
+    })
+    .withFailureHandler(function(e) {
+      if (!silencioso) toast('Nao consegui registrar o aparelho: ' + (e.message || e), 'err');
+    })
+    .registrarDispositivoPwaApp(payload);
+}
+
+function solicitarPermissaoNotificacaoPwa_() {
+  return new Promise(function(resolve) {
+    var resolvido = false;
+    function done(p) {
+      if (resolvido) return;
+      resolvido = true;
+      resolve(p || Notification.permission || 'default');
+    }
+    try {
+      var ret = Notification.requestPermission(done);
+      if (ret && typeof ret.then === 'function') ret.then(done).catch(function(){ done(Notification.permission || 'denied'); });
+    } catch(e) {
+      done('denied');
+    }
+  });
+}
+
+function mostrarNotificacaoTestePwa_() {
+  if (!pwaSuportaNotificacoes_() || Notification.permission !== 'granted') return Promise.resolve();
+  var url = location.origin + location.pathname;
+  var opts = {
+    body: 'Avisos do App Gestao estao ativos neste aparelho.',
+    icon: 'icons/icon-192.png',
+    badge: 'icons/icon-192.png',
+    tag: 'appsel-pwa-ativo',
+    renotify: false,
+    data: { url: url }
+  };
+  if (navigator.serviceWorker && navigator.serviceWorker.ready) {
+    return navigator.serviceWorker.ready
+      .then(function(reg) { return reg.showNotification('App Gestao', opts); })
+      .catch(function() { try { new Notification('App Gestao', opts); } catch(e) {} });
+  }
+  try { new Notification('App Gestao', opts); } catch(e) {}
+  return Promise.resolve();
+}
+
+function ativarNotificacoesPwa_(origem) {
+  origem = origem || 'botao';
+  if (!AUTH_TOKEN) { toast('Entre no App Gestao antes de ativar avisos.', 'err'); return; }
+  if (!pwaSuportaNotificacoes_()) {
+    toast('Este navegador nao oferece notificacoes para este app.', 'err');
+    registrarDispositivoPwa_('unsupported', origem, true);
+    return;
+  }
+  if (!pwaFoiInstalado_()) {
+    if (PWA_INSTALL_PROMPT) {
+      instalarPwaSePossivel_();
+      return;
+    }
+    toast('Abra pelo icone instalado para ativar avisos do aparelho.', 'err');
+    registrarDispositivoPwa_(Notification.permission || 'default', origem, true);
+    return;
+  }
+  if (Notification.permission === 'denied') {
+    registrarDispositivoPwa_('denied', origem, true);
+    atualizarMenuNotificacoesPwa_();
+    toast('Notificacoes bloqueadas nas configuracoes do aparelho.', 'err');
+    return;
+  }
+  if (Notification.permission === 'granted') {
+    localStorage.setItem(pwaLocalKey_('enabled'), '1');
+    registrarDispositivoPwa_('granted', origem, true);
+    atualizarMenuNotificacoesPwa_();
+    mostrarNotificacaoTestePwa_();
+    toast('Avisos do aparelho ativados.', 'ok');
+    return;
+  }
+
+  solicitarPermissaoNotificacaoPwa_().then(function(permissao) {
+    atualizarMenuNotificacoesPwa_();
+    registrarDispositivoPwa_(permissao, origem, permissao !== 'granted');
+    if (permissao === 'granted') {
+      localStorage.setItem(pwaLocalKey_('enabled'), '1');
+      mostrarNotificacaoTestePwa_();
+      toast('Avisos do aparelho ativados.', 'ok');
+    } else {
+      toast('Avisos do aparelho nao foram ativados.', 'err');
+    }
+  });
+}
+
+function instalarPwaSePossivel_() {
+  if (!PWA_INSTALL_PROMPT) {
+    toast('Use o menu do navegador para instalar o App Gestao.', 'err');
+    return;
+  }
+  var promptEvent = PWA_INSTALL_PROMPT;
+  PWA_INSTALL_PROMPT = null;
+  promptEvent.prompt();
+  promptEvent.userChoice.then(function(choice) {
+    if (choice && choice.outcome === 'accepted') {
+      localStorage.setItem('appselPwaInstalled', '1');
+      toast('App instalado. Ative os avisos em seguida.', 'ok');
+      agendarPromptNotificacoesPwa_('instalacao');
+    } else {
+      toast('Instalacao cancelada.', 'err');
+    }
+    atualizarMenuNotificacoesPwa_();
+  }).catch(function() {
+    atualizarMenuNotificacoesPwa_();
+  });
+}
+
+function agendarPromptNotificacoesPwa_(origem) {
+  atualizarMenuNotificacoesPwa_();
+  if (!AUTH_TOKEN || !SERVIDOR || !pwaSuportaNotificacoes_() || !pwaFoiInstalado_()) return;
+  if (Notification.permission === 'granted') {
+    registrarDispositivoPwa_('granted', origem || 'sessao', true);
+    return;
+  }
+  if (Notification.permission !== 'default') return;
+  var key = pwaLocalKey_('prompted');
+  if (PWA_NOTIF_PROMPT_ABERTO || localStorage.getItem(key) === '1') return;
+  PWA_NOTIF_PROMPT_ABERTO = true;
+  setTimeout(function() {
+    if (!AUTH_TOKEN || Notification.permission !== 'default') { PWA_NOTIF_PROMPT_ABERTO = false; return; }
+    abrirDialogo_({
+      titulo: 'Ativar avisos',
+      mensagem: 'Deseja permitir avisos do App Gestao neste aparelho?',
+      ok: 'Ativar',
+      cancelar: 'Agora nao'
+    }, function(ok) {
+      PWA_NOTIF_PROMPT_ABERTO = false;
+      localStorage.setItem(key, '1');
+      if (ok) ativarNotificacoesPwa_(origem || 'prompt');
+      else atualizarMenuNotificacoesPwa_();
+    });
+  }, 900);
+}
+
+window.addEventListener('appinstalled', function() {
+  localStorage.setItem('appselPwaInstalled', '1');
+  PWA_INSTALL_PROMPT = null;
+  agendarPromptNotificacoesPwa_('instalacao');
+});
+
+window.addEventListener('beforeinstallprompt', function(event) {
+  event.preventDefault();
+  PWA_INSTALL_PROMPT = event;
+  atualizarMenuNotificacoesPwa_();
+});
+
 var NOTIF = { prox: [], venc: [] };
 var NOTIF_CAT = 'venc'; // categoria ativa: 'venc' | 'prox'
 var NOTIF_PILHA_ABERTA = {}; // chave "cat:processoId" → true quando a pilha está expandida

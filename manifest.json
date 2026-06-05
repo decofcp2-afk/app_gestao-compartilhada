@@ -2,6 +2,7 @@
   "name": "App Gestao de Etapas - Reitoria",
   "short_name": "App Gestao",
   "description": "Sistema interno da Reitoria para gestao de etapas, fila, capacidade e avisos de prazo do SEL.",
+  "id": "https://decofcp2-afk.github.io/app_gestao-reitoria/",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
