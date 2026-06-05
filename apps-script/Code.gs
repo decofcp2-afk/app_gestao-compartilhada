@@ -1861,147 +1861,173 @@ function enviarAvisosPrazo(modo) {
   var total = (enviarProximos ? avisosProximos.length : 0) + (enviarVencidos ? avisosVencidos.length : 0);
   if (!total) return 'Nenhum aviso para enviar hoje.';
 
-  // ── Processa cada aviso individualmente ───────────────────────────────
   var enviados = 0;
+  var appAssinatura = '<br><br>Atenciosamente,<br><b>Gestão de Etapas - SEL</b>'
+    + '<br><span style="color:#64748b;font-size:12px;">Mensagem automática do Sistema.</span>';
+  var contatoHtml = 'Em caso de dúvidas, entre em contato através do e-mail <a href="mailto:central@cp2.g12.br" style="color:#1d4ed8;text-decoration:none;font-weight:700;">central@cp2.g12.br</a>.';
 
-  function processarAviso(av, tipo) {
-    var p  = av.p;
-    var et = av.et;
+  // Responsável de uma etapa (mesma regra do app): externo na fase externa,
+  // senão interno; fallback ao Agente da etapa.
+  function respDaEtapa_(p, et) {
     var faseEt = String(et.fase || '').toLowerCase();
     var respEtapa = String(et.agente || '').trim();
-    var respAtual = respEtapa;
     var servidorFase = faseEt.indexOf('ext') >= 0
       ? (p.servidorExt || p.servidor || '')
       : (p.servidor || p.servidorExt || '');
-    if (respGenerico_(respAtual)) {
+    var respAtual = respGenerico_(respEtapa) ? servidorFase : respEtapa;
+    if ((!respAtual || !(emailsConfig[respAtual] || _emailServidorFallback_(respAtual))) && servidorFase) {
       respAtual = servidorFase;
     }
-    var procRefHtml = processoRefHtml_(p);
-    var procRefTexto = processoRefTexto_(p);
-    var appAssinatura = '<br><br>Atenciosamente,<br><b>App de Gestão de Prazos/Tarefas - SEL</b>'
-      + '<br><span style="color:#64748b;font-size:12px;">Mensagem automática do Sistema.</span>';
-    var contatoHtml = 'Em caso de dúvidas, entre em contato através do e-mail <a href="mailto:central@cp2.g12.br" style="color:#1d4ed8;text-decoration:none;font-weight:700;">central@cp2.g12.br</a>.';
+    return { display: respEtapa || servidorFase || '', emailNome: respAtual, servidorFase: servidorFase };
+  }
 
-    var responsaveis = [];
-    [respEtapa, servidorFase].forEach(function(nome) {
-      nome = String(nome || '').trim();
-      if (nome && responsaveis.indexOf(nome) < 0) responsaveis.push(nome);
-    });
-    var responsaveisHtml = responsaveis.map(function(nome) {
-      return '<b>' + htmlEsc_(nome) + '</b>';
-    }).join(' e ');
-    var fraseResponsaveis = responsaveis.length > 1
-      ? 'Cujos responsáveis são ' + responsaveisHtml + '.'
-      : (responsaveis.length === 1 ? 'Cujo responsável é ' + responsaveisHtml + '.' : 'Não há responsável cadastrado para esta etapa.');
-
-    var respEmailNome = respAtual;
-    if ((!respEmailNome || !(emailsConfig[respEmailNome] || _emailServidorFallback_(respEmailNome))) && servidorFase) {
-      respEmailNome = servidorFase;
+  // Nova data prevista de conclusão do processo dado o maior atraso entre as etapas vencidas.
+  function novaDataConc_(p, maxAtraso) {
+    var ultima = null;
+    for (var ii = p.etapas.length - 1; ii >= 0; ii--) {
+      if (p.etapas[ii].status !== 'na' && p.etapas[ii].fim_iso) { ultima = p.etapas[ii]; break; }
     }
+    if (!ultima) return '';
+    var base = new Date(ultima.fim_iso + 'T00:00:00');
+    var nova = _addDU_(base, maxAtraso);
+    return String(nova.getDate()).padStart(2,'0') + '/' + String(nova.getMonth()+1).padStart(2,'0') + '/' + nova.getFullYear();
+  }
 
-    // Determina se é processo "da chefia" (chefe é o responsável ou não há servidor)
-    var isChefProc = !respEmailNome || CHEFES_LISTA.indexOf(respEmailNome) >= 0;
-
-    // Calcula nova data prevista de conclusão do processo (apenas para vencidos)
-    var novaDataConcStr = '';
+  // Linha (tr) de uma etapa na tabela do e-mail agrupado.
+  // paraRequisitante: omite a célula de Responsável (nomes internos do SEL).
+  function linhaEtapa_(av, tipo, paraRequisitante) {
+    var et = av.et;
+    var prazoTxt, cor;
     if (tipo === 'vencido') {
-      var ultimaEtapaAtiva = null;
-      for (var ii = p.etapas.length - 1; ii >= 0; ii--) {
-        if (p.etapas[ii].status !== 'na' && p.etapas[ii].fim_iso) {
-          ultimaEtapaAtiva = p.etapas[ii]; break;
-        }
-      }
-      if (ultimaEtapaAtiva) {
-        var dataFinalBase = new Date(ultimaEtapaAtiva.fim_iso + 'T00:00:00');
-        var novaDataFinal = _addDU_(dataFinalBase, av.diasAtraso);
-        novaDataConcStr = String(novaDataFinal.getDate()).padStart(2,'0') + '/'
-          + String(novaDataFinal.getMonth()+1).padStart(2,'0') + '/'
-          + novaDataFinal.getFullYear();
-      }
-    }
-
-    // Textos dinâmicos por tipo
-    var txtPrazo, corPrazo, prefixoAssunto, mensagemPadrao;
-    if (tipo === 'vencido') {
-      corPrazo      = '#dc2626';
-      txtPrazo      = 'Vencida há ' + av.diasAtraso + ' dia' + (av.diasAtraso > 1 ? 's úteis' : ' útil');
-      prefixoAssunto = '⚠️ Etapa vencida';
-      mensagemPadrao = 'Prezado(a), atenção! A etapa <b>' + htmlEsc_(et.nome) + '</b> do processo ' + procRefHtml
-        + ' está vencida há <b>' + av.diasAtraso + ' dia' + (av.diasAtraso > 1 ? 's úteis' : ' útil') + '</b>. '
-        + fraseResponsaveis + ' '
-        + (novaDataConcStr ? 'Por conta disso, o prazo de conclusão do processo foi postergado para <b>' + novaDataConcStr + '</b>. ' : '')
-        + contatoHtml;
+      cor = '#dc2626';
+      prazoTxt = 'Vencida há ' + av.diasAtraso + ' dia' + (av.diasAtraso > 1 ? 's úteis' : ' útil');
     } else {
-      corPrazo      = av.dias === 0 ? '#dc2626' : '#d97706';
-      txtPrazo      = av.dias === 0 ? 'Vence hoje'
-                    : 'Vence em ' + av.dias + ' dia' + (av.dias > 1 ? 's úteis' : ' útil');
-      prefixoAssunto = '⏰ Prazo próximo';
-      mensagemPadrao = 'Prezado(a), atenção! A etapa <b>' + htmlEsc_(et.nome) + '</b> do processo ' + procRefHtml + ' '
-        + (av.dias === 0 ? 'vence <b style="color:#dc2626;">hoje</b>' : 'vence em <b>' + av.dias + ' dia' + (av.dias > 1 ? 's úteis' : ' útil') + '</b>')
-        + '. Organize o que for necessário para evitar atrasos no processo. ' + contatoHtml;
+      cor = av.dias === 0 ? '#dc2626' : '#d97706';
+      prazoTxt = av.dias === 0 ? 'Vence hoje' : 'Vence em ' + av.dias + ' dia' + (av.dias > 1 ? 's úteis' : ' útil');
     }
+    var celulaResp = '';
+    if (!paraRequisitante) {
+      var resp = respDaEtapa_(av.p, et);
+      var respTxt = resp.display ? htmlEsc_(resp.display) : '<span style="color:#94a3b8;">sem responsável cadastrado</span>';
+      celulaResp = '<td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;color:#475569;">' + respTxt + '</td>';
+    }
+    return '<tr>'
+      + '<td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;font-weight:600;color:#1e293b;">' + htmlEsc_(et.nome) + '</td>'
+      + celulaResp
+      + '<td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;color:' + cor + ';font-weight:700;white-space:nowrap;">' + htmlEsc_(prazoTxt) + '</td>'
+      + '<td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;color:#64748b;white-space:nowrap;">' + isoParaBR_(et.fim_iso) + '</td>'
+      + '</tr>';
+  }
 
-    var bloco = '<div style="border-left:4px solid '+corPrazo+';padding:8px 12px;margin:12px 0;background:#fafafa;border-radius:0 6px 6px 0;">'
-      + '<b>Resumo do aviso</b><br>'
-      + '<span style="color:#334155;">' + htmlEsc_(txtPrazo) + '</span>'
-      + (responsaveisHtml ? '<br><span style="color:#64748b;">Responsável(is): ' + responsaveisHtml + '</span>' : '')
-      + (tipo !== 'vencido' ? '<br><span style="color:#64748b;font-size:12px;">Prazo da etapa: ' + isoParaBR_(et.fim_iso) + '</span>' : '')
-      + '</div>';
-
-    if (av.aguardandoReq) {
-      if (p.emailR && p.emailR.indexOf('@') > 0) {
-        var txtAguardando = tipo === 'vencido'
-          ? 'está aguardando manifestação do setor requisitante e o prazo já venceu'
-          : 'está aguardando manifestação do setor requisitante e possui prazo próximo';
-        var bodyAguardando = htmlHeader_('App de Gestão de Prazos/Tarefas - SEL', 'Pendência do requisitante · Colégio Pedro II')
-          + 'Prezado(a), atenção! O processo ' + procRefHtml + ' está na etapa <b>' + htmlEsc_(et.nome)
-          + '</b>, consta como <b>Aguardando requisitante</b> e ' + txtAguardando
-          + '. Pedimos verificar as pendências e responder ao SEL. ' + contatoHtml
-          + '<br><br>' + bloco
-          + appAssinatura;
-        if (enviar_(p.emailR, 'Pendência do requisitante — ' + procRefTexto, bodyAguardando)) enviados++;
+  // Monta o corpo de um e-mail agrupado por processo, com a tabela das etapas passadas.
+  // paraRequisitante: omite a coluna "Responsável" (nomes internos do SEL não
+  // interessam ao setor requisitante) e usa um texto de cobrança focado no
+  // impacto do atraso sobre o prazo final do processo.
+  function corpoProcesso_(p, avisos, tipo, subtituloExtra, paraRequisitante) {
+    var procRefHtml = processoRefHtml_(p);
+    var n = avisos.length;
+    var intro, novaDataStr = '';
+    if (tipo === 'vencido') {
+      var maxAtraso = 0;
+      avisos.forEach(function(a){ if (a.diasAtraso > maxAtraso) maxAtraso = a.diasAtraso; });
+      novaDataStr = novaDataConc_(p, maxAtraso);
+      if (paraRequisitante) {
+        intro = 'Prezado(a), o processo ' + procRefHtml + ' possui <b>' + n + ' etapa' + (n>1?'s vencidas':' vencida') + '</b> que dependem de providências do seu setor. '
+          + 'Pedimos que regularize a pendência o quanto antes. '
+          + (novaDataStr ? 'O atraso posterga a conclusão do processo: a nova previsão é <b>' + novaDataStr + '</b>. ' : '')
+          + contatoHtml;
+      } else {
+        intro = 'Prezado(a), atenção! O processo ' + procRefHtml + ' possui <b>' + n + ' etapa' + (n>1?'s vencidas':' vencida') + '</b>. '
+          + 'Veja abaixo as etapas e seus respectivos responsáveis. '
+          + (novaDataStr ? 'Considerando o maior atraso, a previsão de conclusão do processo foi postergada para <b>' + novaDataStr + '</b>. ' : '')
+          + contatoHtml;
       }
-      return;
-    }
-
-    // 1. E-mail para o servidor responsável (apenas se NÃO for processo da chefia)
-    if (!isChefProc) {
-      var emailServ = emailsConfig[respEmailNome] || _emailServidorFallback_(respEmailNome) || '';
-      if (isChefiaEmail(emailServ)) {
-        var bodyServ = htmlHeader_('App de Gestão de Prazos/Tarefas - SEL', prefixoAssunto + ' · Colégio Pedro II')
-          + mensagemPadrao
-          + '<br><br>' + bloco
-          + appAssinatura;
-        if (enviar_(emailServ, prefixoAssunto + ': ' + procRefTexto + ' — ' + et.nome, bodyServ)) enviados++;
+    } else {
+      if (paraRequisitante) {
+        intro = 'Prezado(a), o processo ' + procRefHtml + ' possui <b>' + n + ' etapa' + (n>1?'s com prazo próximo':' com prazo próximo') + '</b> que dependem de providências do seu setor. '
+          + 'Pedimos atenção para evitar que o atraso postergue a conclusão do processo. ' + contatoHtml;
+      } else {
+        intro = 'Prezado(a), atenção! O processo ' + procRefHtml + ' possui <b>' + n + ' etapa' + (n>1?'s com prazo próximo':' com prazo próximo') + '</b>. '
+          + 'Organize o que for necessário para evitar atrasos. ' + contatoHtml;
       }
     }
+    var tabela = '<table style="width:100%;border-collapse:collapse;margin:14px 0;font-size:13px;">'
+      + '<thead><tr>'
+      + '<th style="text-align:left;padding:8px 10px;background:#1a3a5c;color:#fff;border-radius:6px 0 0 0;">Etapa</th>'
+      + (paraRequisitante ? '' : '<th style="text-align:left;padding:8px 10px;background:#1a3a5c;color:#fff;">Responsável</th>')
+      + '<th style="text-align:left;padding:8px 10px;background:#1a3a5c;color:#fff;">Situação</th>'
+      + '<th style="text-align:left;padding:8px 10px;background:#1a3a5c;color:#fff;border-radius:0 6px 0 0;">Prazo</th>'
+      + '</tr></thead><tbody>';
+    avisos.forEach(function(a){ tabela += linhaEtapa_(a, tipo, paraRequisitante); });
+    tabela += '</tbody></table>';
+    var subt = (tipo === 'vencido' ? '⚠️ Etapas vencidas' : '⏰ Prazos próximos') + (subtituloExtra ? ' · ' + subtituloExtra : '') + ' · Colégio Pedro II';
+    return htmlHeader_('Gestão de Etapas - SEL', subt)
+      + intro + tabela + appAssinatura;
+  }
 
-    // 2. E-mail para a chefia do SEL (sempre, com contexto completo)
-    if (chefiaEmails.length) {
-      var bodyChef = htmlHeader_('App de Gestão de Prazos/Tarefas - SEL', prefixoAssunto + ' · Colégio Pedro II')
-        + (isChefProc ? '<b>Processo sob responsabilidade da chefia.</b><br><br>' : '')
-        + mensagemPadrao
-        + '<br><br>' + bloco
-        + appAssinatura;
+  // ── Processa um PROCESSO com todas as suas etapas de um tipo ───────────
+  function processarProcesso(p, avisos, tipo) {
+    var procRefTexto = processoRefTexto_(p);
+    var prefixoAssunto = tipo === 'vencido' ? '⚠️ Etapas vencidas' : '⏰ Prazos próximos';
+
+    // Etapas "aguardando requisitante" são cobradas SÓ do setor requisitante —
+    // não geram e-mail para os servidores de licitações nem para a chefia.
+    var avisosSEL = avisos.filter(function(a){ return !a.aguardandoReq; });
+
+    // 1. E-mail para cada SERVIDOR responsável — só com as etapas dele (exclui chefia).
+    var porServidor = {}; // emailNome → { email, avisos: [] }
+    avisosSEL.forEach(function(a) {
+      var resp = respDaEtapa_(p, a.et);
+      var nome = resp.emailNome;
+      if (!nome || CHEFES_LISTA.indexOf(nome) >= 0) return; // chefia recebe no bloco 2
+      var email = emailsConfig[nome] || _emailServidorFallback_(nome) || '';
+      if (!isChefiaEmail(email)) return;
+      if (!porServidor[nome]) porServidor[nome] = { email: email, avisos: [] };
+      porServidor[nome].avisos.push(a);
+    });
+    Object.keys(porServidor).forEach(function(nome) {
+      var grp = porServidor[nome];
+      var body = corpoProcesso_(p, grp.avisos, tipo);
+      if (enviar_(grp.email, prefixoAssunto + ': ' + procRefTexto + ' (' + grp.avisos.length + ' etapa' + (grp.avisos.length>1?'s':'') + ')', body)) enviados++;
+    });
+
+    // 2. E-mail para a chefia — com as etapas que dependem do SEL (sem as aguardando-req).
+    if (chefiaEmails.length && avisosSEL.length) {
+      var nSel = avisosSEL.length;
+      var bodyChef = corpoProcesso_(p, avisosSEL, tipo);
+      var assuntoChef = prefixoAssunto + ': ' + procRefTexto + ' (' + nSel + ' etapa' + (nSel>1?'s':'') + ')';
       chefiaEmails.forEach(function(emailChef) {
-        if (enviar_(emailChef, prefixoAssunto + ': ' + procRefTexto + ' — ' + et.nome, bodyChef)) enviados++;
+        if (enviar_(emailChef, assuntoChef, bodyChef)) enviados++;
       });
     }
 
-    // 3. E-mail para o setor requisitante (se tiver e-mail cadastrado)
+    // 3. E-mail para o setor requisitante — TODAS as etapas do processo (inclui as
+    // aguardando-req), SEM coluna de responsáveis e com texto de cobrança.
     if (p.emailR && p.emailR.indexOf('@') > 0) {
-      var bodyReq = htmlHeader_('App de Gestão de Prazos/Tarefas - SEL', 'Atualização do processo · Colégio Pedro II')
-        + mensagemPadrao
-        + '<br><br>' + bloco
-        + appAssinatura;
-      if (enviar_(p.emailR, prefixoAssunto + ' — ' + p.nome, bodyReq)) enviados++;
+      var nReq = avisos.length;
+      var bodyReq = corpoProcesso_(p, avisos, tipo, null, true);
+      if (enviar_(p.emailR, prefixoAssunto + ' — ' + p.nome + ' (' + nReq + ' etapa' + (nReq>1?'s':'') + ')', bodyReq)) enviados++;
     }
   }
 
-  if (enviarProximos) avisosProximos.forEach(function(av) { processarAviso(av, 'proximo'); });
-  if (enviarVencidos) avisosVencidos.forEach(function(av) { processarAviso(av, 'vencido'); });
+  // Agrupa os avisos por processo (preservando ordem) e processa cada processo de uma vez.
+  function processarLista(lista, tipo) {
+    var porProc = {};
+    var ordem = [];
+    lista.forEach(function(av) {
+      var pid = av.p.id;
+      if (!porProc[pid]) { porProc[pid] = { p: av.p, avisos: [] }; ordem.push(pid); }
+      porProc[pid].avisos.push(av);
+    });
+    ordem.forEach(function(pid) {
+      processarProcesso(porProc[pid].p, porProc[pid].avisos, tipo);
+    });
+  }
 
-  return 'E-mails enviados: ' + enviados + ' (' + (enviarProximos ? avisosProximos.length : 0) + ' proximos + ' + (enviarVencidos ? avisosVencidos.length : 0) + ' vencidos).';
+  if (enviarProximos) processarLista(avisosProximos, 'proximo');
+  if (enviarVencidos) processarLista(avisosVencidos, 'vencido');
+
+  return 'E-mails enviados: ' + enviados + ' (' + (enviarProximos ? avisosProximos.length : 0) + ' proximos + ' + (enviarVencidos ? avisosVencidos.length : 0) + ' vencidos), agrupados por processo.';
 }
 
 function enviarAvisosPrazoProximos() {
@@ -2021,10 +2047,23 @@ function enviarAvisosPrazoApp(authToken) {
 // Reusa EXATAMENTE a mesma varredura de enviarAvisosPrazo (etapas próximas e
 // vencidas), mas em vez de enviar e-mail, RETORNA a lista para o app exibir
 // no sininho. Garante paridade com os e-mails sem duplicar a regra de prazo.
-function _coletarAvisosPrazo_(dados, hoje) {
+// filtroServidor: quando informado (perfil comum), só inclui etapas cujo
+// responsável é esse servidor — mesmo critério do e-mail (externo na fase
+// externa, senão interno; fallback ao Agente da etapa). Chefe passa '' (vê tudo).
+function _coletarAvisosPrazo_(dados, hoje, filtroServidor) {
   function _parado_(status) {
     status = String(status || '').toLowerCase();
     return status === 'paralisado' || status === 'suspenso';
+  }
+  function _normNome_(s) {
+    return String(s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  }
+  var alvo = _normNome_(filtroServidor);
+  function _respDaEtapa_(p, et) {
+    var faseExt = String(et.fase || '').toLowerCase().indexOf('ext') >= 0;
+    var resp = faseExt ? (p.servidorExt || p.servidor || '') : (p.servidor || p.servidorExt || '');
+    if (!resp && et.agente) resp = et.agente; // fallback: agente da própria etapa
+    return resp;
   }
   var proximos = [];
   var vencidos = [];
@@ -2032,6 +2071,8 @@ function _coletarAvisosPrazo_(dados, hoje) {
     if (p.status === 'ok' || p.status === 'planejamento' || p.retornoFila || _parado_(p.status)) return;
     (p.etapas || []).forEach(function(et) {
       if (et.status === 'ok' || et.status === 'na' || et.retornoFila || _parado_(et.status) || !et.fim_iso) return;
+      // Filtro por responsável (perfil comum)
+      if (alvo && _normNome_(_respDaEtapa_(p, et)) !== alvo) return;
       var fim  = new Date(et.fim_iso + 'T00:00:00');
       var diff = _contDU_(hoje, fim); // positivo = dias até vencer; negativo = já venceu
       var aguardaReq = p.status === 'aguardando' || et.status === 'aguardando';
@@ -2065,9 +2106,12 @@ function getAlertasApp(authToken) {
   var dadosRaw = _getEtapasParaApp_(sess);
   var dados = (dadosRaw && dadosRaw.processos) ? dadosRaw.processos : (dadosRaw || []);
   var hoje = new Date(); hoje.setHours(0, 0, 0, 0);
-  var col = _coletarAvisosPrazo_(dados, hoje);
+  // Chefe vê todos os alertas; servidor comum vê só os processos onde é responsável.
+  var filtroServidor = sess.isChefe ? '' : (sess.nome || '');
+  var col = _coletarAvisosPrazo_(dados, hoje, filtroServidor);
   return {
     ok: true,
+    escopo: sess.isChefe ? 'todos' : 'meus',
     proximos: col.proximos,
     vencidos: col.vencidos,
     totalProximos: col.proximos.length,
