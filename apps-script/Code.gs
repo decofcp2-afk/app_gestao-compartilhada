@@ -886,8 +886,29 @@ function _loginChallengeKey_(challengeId) {
   return 'SEL_LOGIN_CHALLENGE_' + String(challengeId || '').replace(/[^a-zA-Z0-9_-]/g, '');
 }
 
+// Remove challenges de login abandonados (criados mas nunca confirmados).
+// Sem isso, cada tentativa de login abandonada deixaria uma propriedade
+// SEL_LOGIN_CHALLENGE_* para sempre no PropertiesService (quota de 500 KB).
+function _limparChallengesExpirados_() {
+  try {
+    var props = PropertiesService.getScriptProperties();
+    var todos = props.getProperties();
+    var agora = Date.now();
+    Object.keys(todos).forEach(function(k) {
+      if (k.indexOf('SEL_LOGIN_CHALLENGE_') !== 0) return;
+      try {
+        var ch = JSON.parse(todos[k]);
+        if (!ch || !ch.exp || ch.exp < agora) props.deleteProperty(k);
+      } catch(e) {
+        props.deleteProperty(k); // conteúdo corrompido — remove
+      }
+    });
+  } catch(e) { /* limpeza é melhor esforço; nunca bloqueia o login */ }
+}
+
 function loginChallengeApp(matricula) {
   try {
+    _limparChallengesExpirados_();
     var lista = _getServidoresApp_();
     var users = _authSyncServidores_(lista);
     var mat = _authNorm_(matricula);
@@ -972,6 +993,11 @@ function trocarSenhaHashApp(token, novaSalt, novoHash) {
   });
 }
 
+// LEGADO — usado apenas quando o app roda DENTRO do Apps Script (HtmlService,
+// google.script.run nativo). No fluxo via GitHub Pages a senha NUNCA passa por
+// aqui: o front intercepta 'loginApp' e usa challenge-response
+// (appsel.challenge + appsel.loginProof). Esta função NÃO está na allowlist
+// de _apiCallAppSEL_, portanto não é acessível pela API pública.
 function loginApp(matricula, senha) {
   try {
     var lista = _getServidoresApp_();
@@ -1024,6 +1050,10 @@ function logoutApp(token) {
   return { ok: true };
 }
 
+// LEGADO — mesmo caso de loginApp acima: só é usada no modo google.script.run
+// nativo. Via GitHub Pages o front intercepta 'trocarSenhaApp' e chama
+// appsel.changePasswordHash (trocarSenhaHashApp), sem enviar a senha em claro.
+// Não está na allowlist de _apiCallAppSEL_.
 function trocarSenhaApp(token, senhaAtual, novaSenha) {
   return _withAppLockResult_('trocar senha', function() {
     var sess = _authRequire_(token, false, true);

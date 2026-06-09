@@ -945,8 +945,8 @@ var MODO_CONTAGEM_PRAZOS = 'corridos';
 var PAINEL_URL = String((window.APPSEL_CONFIG && window.APPSEL_CONFIG.painelUrl) || 'https://decofcp2-afk.github.io/painel-contratacoes-reitoria/').trim();
 var HIST       = [];
 var CAP_DATA   = null;
-var PROC_ATI   = null;
-var CONC       = {};
+var PROC_ATI   = null;  // processo atualmente aberto
+var CONC       = {};    // dados do fluxo de conclusão
 var STEP       = 0;
 var HIST_CARREGADO = false;
 var CAP_CARREGADO  = false;
@@ -963,10 +963,7 @@ var FILTRO_INICIAL_APLICADO = false;
 var SERV_DATA = []; // [{nome, cor, isChefe, email}] — carregado do GS
 var SERV_CLS  = {}; // nome → classe CSS (gerada dinamicamente)
 var CHEFES    = []; // nomes dos chefes
-var PROC_ATI   = null;  // processo atualmente aberto
-var CONC       = {};    // dados do fluxo de conclusão
-var STEP       = 0;
-var HIST_CARREGADO = false;
+// (PROC_ATI, CONC, STEP e HIST_CARREGADO já estão declarados no bloco acima)
 
 var SL = {
   ok:'Concluída', andamento:'Em andamento', atrasado:'Atrasado',
