@@ -220,8 +220,10 @@
     .sheet-footer { padding: 12px 16px; border-top: 1px solid var(--border); padding-bottom: calc(12px + env(safe-area-inset-bottom)); flex-shrink: 0; }
     .proc-header-top { display: flex; align-items: flex-start; gap: 10px; }
     .proc-header-text { flex: 1; min-width: 0; }
-    .proc-back { border: 1.5px solid var(--border); background: var(--bg); color: var(--navy); border-radius: 10px; padding: 7px 11px; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+    .proc-back { border: 1.5px solid var(--border); background: var(--bg); color: var(--navy); border-radius: 10px; padding: 6px 11px 6px 8px; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
     .proc-back:active { background: #e2e8f0; }
+    /* Ícone do Voltar: seta branca em círculo azul (SVG inline) */
+    .proc-back-ic { width: 18px; height: 18px; flex-shrink: 0; display: block; }
 
     /* ── Etapas no modal de processo ───────────────────────────── */
     .et-row { display: flex; align-items: flex-start; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
@@ -2111,7 +2113,12 @@ function abrirProcesso(idx) {
   var respAtualModal = extAtivo ? (p.servidorExt || p.servidor || '') : (p.servidor || p.servidorExt || '');
   document.getElementById('proc-header').innerHTML =
     '<div class="proc-header-top">'
-    + '<button class="proc-back" onclick="fecharProc()" aria-label="Voltar para a lista de processos">← Voltar</button>'
+    + '<button class="proc-back" onclick="fecharProc()" aria-label="Voltar para a lista de processos">'
+    + '<svg class="proc-back-ic" viewBox="0 0 24 24" aria-hidden="true">'
+    + '<circle cx="12" cy="12" r="12" fill="var(--blue)"/>'
+    + '<path d="M11.4 6.4 5.6 12l5.8 5.6v-3.4h7v-4.4h-7z" fill="#fff"/>'
+    + '</svg>'
+    + 'Voltar</button>'
     + '<div class="proc-header-text">'
     + '<div class="sheet-title">' + esc(p.nome) + '</div>'
     + '<div class="sheet-sub">' + esc(p.num||p.id) + ' · ' + esc(p.modal||'') + ' · ' + esc(p.req||'') + '</div>'
