@@ -27,7 +27,7 @@ var EMAILS_SEL   = {
   'Bruno':   'COLE_EMAIL_BRUNO',    // ← preencher
   'Samuel':  'COLE_EMAIL_SAMUEL'
 };
-var DIAS_AVISO = 3; // dias úteis de antecedência para enviar aviso de prazo
+var DIAS_AVISO = 3; // dias de antecedência para enviar aviso de prazo (contagem conforme MODO_CONTAGEM_PRAZOS)
 var AVISO_PROXIMOS_HORA = 10;
 var AVISO_PROXIMOS_MINUTO = 30;
 var AVISO_PROXIMOS_LABEL = '10h30';
@@ -206,6 +206,14 @@ var ABA_ETP  = '🗓 Etapas';
 var ABA_HIST = '__historico_motivos'; // aba oculta, append-only
 var ABA_CAL  = 'Calendario';
 
+// ── Contagem de prazos ────────────────────────────────────────────────────
+// 'corridos' = dias corridos puros: conta TODOS os dias (fins de semana e
+//              feriados incluídos). Modo atual, definido pela gestão.
+// 'uteis'    = dias úteis: pula sábados, domingos e feriados (fixos + aba
+//              Calendario). Os feriados continuam definidos abaixo e voltam
+//              a valer automaticamente se este modo for reativado.
+var MODO_CONTAGEM_PRAZOS = 'corridos';
+
 // ── Feriados nacionais fixos (MM-DD) ─────────────────────────────────────
 var _FERIADOS = ['01-01','04-21','05-01','09-07','10-12','11-02','11-15','11-20','12-25'];
 var _CALENDARIO_CACHE = null;
@@ -325,7 +333,8 @@ function _calendarioPayload_() {
   var mapa = _calendarioFeriadosMap_();
   return {
     municipio: _calMunicipio_(),
-    feriados: Object.keys(mapa).sort()
+    feriados: Object.keys(mapa).sort(),
+    modoContagem: MODO_CONTAGEM_PRAZOS // mantém o front em sincronia com o back
   };
 }
 
@@ -339,12 +348,24 @@ function _isFer_(d) {
   return _isFerFixo_(d) || !!_calendarioFeriadosMap_()[_toIso_(d)];
 }
 
+// Diz se uma data conta para o prazo, conforme MODO_CONTAGEM_PRAZOS.
+// 'corridos' → todo dia conta. 'uteis' → pula sáb/dom e feriados.
+function _contaDiaPrazo_(d) {
+  if (MODO_CONTAGEM_PRAZOS !== 'uteis') return true;
+  return d.getDay() !== 0 && d.getDay() !== 6 && !_isFer_(d);
+}
+
 function _addDU_(data, dias) {
   if (dias <= 0) return new Date(data.getTime());
+  if (MODO_CONTAGEM_PRAZOS !== 'uteis') {
+    var dc = new Date(data.getTime());
+    dc.setDate(dc.getDate() + dias);
+    return dc;
+  }
   var d = new Date(data.getTime()), n = 0;
   while (n < dias) {
     d.setDate(d.getDate() + 1);
-    if (d.getDay() !== 0 && d.getDay() !== 6 && !_isFer_(d)) n++;
+    if (_contaDiaPrazo_(d)) n++;
   }
   return d;
 }
@@ -354,11 +375,14 @@ function _contDU_(ini, fim) {
   var a = new Date(ini); a.setHours(0,0,0,0);
   var b = new Date(fim); b.setHours(0,0,0,0);
   if (b.getTime() === a.getTime()) return 0;
+  if (MODO_CONTAGEM_PRAZOS !== 'uteis') {
+    return Math.round((b.getTime() - a.getTime()) / 86400000);
+  }
   var sinal = b > a ? 1 : -1;
   var c = 0, d = new Date(a);
   while ((sinal > 0 && d < b) || (sinal < 0 && d > b)) {
     d.setDate(d.getDate() + sinal);
-    if (d.getDay() !== 0 && d.getDay() !== 6 && !_isFer_(d)) c++;
+    if (_contaDiaPrazo_(d)) c++;
   }
   return c * sinal;
 }
@@ -1078,7 +1102,7 @@ function solicitarResetSenhaApp(matricula) {
 }
 
 // ── getEtapasParaApp ──────────────────────────────────────────────────────
-// Retorna todos os processos com etapas calculadas em cascata (dias úteis).
+// Retorna todos os processos com etapas calculadas em cascata (contagem conforme MODO_CONTAGEM_PRAZOS).
 // Inclui referência ao histórico de motivos para exibir o cadeado no app.
 function getEtapasParaApp(authToken) {
   return _getEtapasParaApp_(_authRequire_(authToken, false));
@@ -1658,8 +1682,16 @@ function getHistorico(authToken) {
 }
 
 // ── _histMap_ ─────────────────────────────────────────────────────────────
-// Retorna mapa {processoId||nomeEtapa → entrada mais antiga com motivo}.
-// "Mais antiga" = primeira vez que o motivo foi registrado = registro imutável.
+// Retorna mapa {processoId||nomeEtapa → primeiro motivo do CICLO ATUAL}.
+// "Primeiro do ciclo" = registro imutável da conclusão vigente da etapa.
+//
+// Regras (corrige o bug de exibir servidor/data de um ciclo anterior):
+//   • 'REGRESSAO:' reabre a etapa → descarta o registro anterior; o próximo
+//     motivo registrado passa a ser o exibido no cadeado.
+//   • 'RETORNO PARA FILA:' é marca operacional, não é motivo de atraso de
+//     conclusão → nunca aparece no cadeado.
+// Sem isso, uma etapa reconcluida pela Beatriz exibia o registro antigo da
+// Amanda (entrada mais velha da aba de histórico).
 function _histMap_() {
   var ss = _ss_();
   var sh = ss.getSheetByName(ABA_HIST);
@@ -1674,7 +1706,10 @@ function _histMap_() {
     if (!pid || !nom) continue;
     var k   = pid + '||' + nom;
     var mot = String(r[4] || '').trim();
-    if (mot && !mapa[k]) {   // guarda só o primeiro registro (imutável)
+    var motNorm = _normText_(mot);
+    if (motNorm.indexOf('regressao:') === 0) { delete mapa[k]; continue; } // etapa reaberta → novo ciclo
+    if (motNorm.indexOf('retorno para fila:') === 0) continue;            // marca operacional, ignora
+    if (mot && !mapa[k]) {   // guarda só o primeiro registro do ciclo (imutável)
       mapa[k] = {
         ts:        r[0] instanceof Date ? r[0].getTime() : 0,
         tsStr:     r[0] instanceof Date ? r[0].toLocaleDateString('pt-BR') : String(r[0]),
@@ -1709,7 +1744,7 @@ function _appendHist_(e) {
 
 // ── enviarAvisosPrazo ─────────────────────────────────────────────────────
 // Triggers de segunda a sexta: prazos proximos as 10h30 e vencidos as 14h.
-//   1. Prazo próximo  — etapa vence em até DIAS_AVISO dias úteis
+//   1. Prazo próximo  — etapa vence em até DIAS_AVISO dias
 //   2. Prazo vencido  — etapa deveria ter sido concluída mas não foi
 //
 // Destinatários:
@@ -1897,10 +1932,10 @@ function enviarAvisosPrazo(modo) {
     var prazoTxt, cor;
     if (tipo === 'vencido') {
       cor = '#dc2626';
-      prazoTxt = 'Vencida há ' + av.diasAtraso + ' dia' + (av.diasAtraso > 1 ? 's úteis' : ' útil');
+      prazoTxt = 'Vencida há ' + av.diasAtraso + ' dia' + (av.diasAtraso > 1 ? 's' : '');
     } else {
       cor = av.dias === 0 ? '#dc2626' : '#d97706';
-      prazoTxt = av.dias === 0 ? 'Vence hoje' : 'Vence em ' + av.dias + ' dia' + (av.dias > 1 ? 's úteis' : ' útil');
+      prazoTxt = av.dias === 0 ? 'Vence hoje' : 'Vence em ' + av.dias + ' dia' + (av.dias > 1 ? 's' : '');
     }
     var celulaResp = '';
     if (!paraRequisitante) {

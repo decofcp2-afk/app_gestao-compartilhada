@@ -939,6 +939,9 @@ var DATA       = [];
 var FILA       = [];   // processos sem D0 (fila de prioridades)
 var CALENDARIO_FERIADOS = {};
 var CALENDARIO_MUNICIPIO = String((window.APPSEL_CONFIG && window.APPSEL_CONFIG.municipioCalendario) || 'Rio de Janeiro');
+// 'corridos' = conta todos os dias; 'uteis' = pula sáb/dom e feriados.
+// Sincronizado com o backend via payload do calendário (espelha o GS).
+var MODO_CONTAGEM_PRAZOS = 'corridos';
 var PAINEL_URL = String((window.APPSEL_CONFIG && window.APPSEL_CONFIG.painelUrl) || 'https://decofcp2-afk.github.io/painel-contratacoes-reitoria/').trim();
 var HIST       = [];
 var CAP_DATA   = null;
@@ -1018,7 +1021,7 @@ function salvarCacheOffline_() {
     servidores: SERV_DATA || [],
     data: DATA || [],
     fila: FILA || [],
-    calendario: { feriados: Object.keys(CALENDARIO_FERIADOS || {}), municipio: CALENDARIO_MUNICIPIO },
+    calendario: { feriados: Object.keys(CALENDARIO_FERIADOS || {}), municipio: CALENDARIO_MUNICIPIO, modoContagem: MODO_CONTAGEM_PRAZOS },
     notificacoes: NOTIF || { prox: [], venc: [] },
     diasAviso: NOTIF_DIAS_AVISO,
     triggerStatus: TRIGGER_STATUS
@@ -1748,11 +1751,11 @@ function _notifFmtDiaHdr_(iso) {
 function _notifItemHtml_(it, ehVenc, cor, pid, onclickExpr, dentroPilha) {
   var prazoHtml;
   if (ehVenc) {
-    prazoHtml = '<span style="color:var(--red)">Vencida há ' + it.diasAtraso + ' dia' + (it.diasAtraso > 1 ? 's úteis' : ' útil') + '</span>';
+    prazoHtml = '<span style="color:var(--red)">Vencida há ' + it.diasAtraso + ' dia' + (it.diasAtraso > 1 ? 's' : '') + '</span>';
   } else if (it.dias === 0) {
     prazoHtml = '<span style="color:var(--red)">Vence hoje</span>';
   } else {
-    prazoHtml = '<span style="color:var(--amber)">Vence em ' + it.dias + ' dia' + (it.dias > 1 ? 's úteis' : ' útil') + '</span>';
+    prazoHtml = '<span style="color:var(--amber)">Vence em ' + it.dias + ' dia' + (it.dias > 1 ? 's' : '') + '</span>';
   }
   var aguarda = it.aguardandoReq ? ' <span style="color:#92400e;font-weight:700;">· aguarda requisitante</span>' : '';
   var dataHtml = it.fimIso ? '<div class="notif-item-data">' + esc(_notifFmtDiaHdr_(it.fimIso)) + '</div>' : '';
@@ -1823,9 +1826,9 @@ function renderNotif_() {
     if (!aberta) {
       // Card recolhido com efeito de pilha + contador "+N"
       var resumoPrazo = ehVenc
-        ? ('Etapa mais crítica vencida há ' + g.itens[0].diasAtraso + ' dia' + (g.itens[0].diasAtraso > 1 ? 's úteis' : ' útil'))
+        ? ('Etapa mais crítica vencida há ' + g.itens[0].diasAtraso + ' dia' + (g.itens[0].diasAtraso > 1 ? 's' : ''))
         : (g.itens[0].dias === 0 ? 'Etapa mais próxima vence hoje'
-            : 'Etapa mais próxima vence em ' + g.itens[0].dias + ' dia' + (g.itens[0].dias > 1 ? 's úteis' : ' útil'));
+            : 'Etapa mais próxima vence em ' + g.itens[0].dias + ' dia' + (g.itens[0].dias > 1 ? 's' : ''));
       html += '<div class="notif-stack" onclick="toggleNotifPilha_(\'' + esc(chave) + '\')">'
         + '<div class="notif-stack-l2"></div>'
         + '<div class="notif-stack-l1"></div>'
@@ -2879,6 +2882,7 @@ function aplicarCalendario_(cal) {
   }
   CALENDARIO_FERIADOS = mapa;
   if (cal && cal.municipio) CALENDARIO_MUNICIPIO = String(cal.municipio);
+  if (cal && cal.modoContagem) MODO_CONTAGEM_PRAZOS = String(cal.modoContagem);
 }
 function _isFerBR_(d) {
   return _FERIADOS_BR.indexOf(String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')) >= 0 ||
@@ -2886,6 +2890,11 @@ function _isFerBR_(d) {
 }
 function _addDU_br_(data, dias) {
   if (dias <= 0) return new Date(data.getTime());
+  if (MODO_CONTAGEM_PRAZOS !== 'uteis') {
+    var dc = new Date(data.getTime());
+    dc.setDate(dc.getDate() + dias);
+    return dc;
+  }
   var d = new Date(data.getTime()), n = 0;
   while (n < dias) { d.setDate(d.getDate()+1); if (d.getDay()!==0 && d.getDay()!==6 && !_isFerBR_(d)) n++; }
   return d;
@@ -2895,6 +2904,9 @@ function _contDU_br_(ini, fim) {
   var a = new Date(ini.getTime ? ini.getTime() : ini); a.setHours(0,0,0,0);
   var b = new Date(fim.getTime ? fim.getTime() : fim); b.setHours(0,0,0,0);
   if (b.getTime() === a.getTime()) return 0;
+  if (MODO_CONTAGEM_PRAZOS !== 'uteis') {
+    return Math.round((b.getTime() - a.getTime()) / 86400000);
+  }
   var sinal = b > a ? 1 : -1;
   var c = 0, d = new Date(a.getTime());
   while ((sinal > 0 && d < b) || (sinal < 0 && d > b)) {

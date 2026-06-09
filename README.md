@@ -99,7 +99,7 @@ Regras atuais:
 
 ## Calendario de feriados oficiais
 
-O calculo de dias uteis usa sabado, domingo, feriados nacionais fixos e, quando existir, a aba `Calendario` da planilha.
+Os prazos sao contados em **dias corridos** (todos os dias contam, inclusive fins de semana e feriados). O modo e controlado pela constante `MODO_CONTAGEM_PRAZOS` no `Code.gs` (espelhada no `index.html`). Se for alterada para `'uteis'`, o calculo volta a excluir sabado, domingo, feriados nacionais fixos e, quando existir, as datas da aba `Calendario` da planilha — a infraestrutura de feriados abaixo continua valida para esse caso.
 
 A aba deve ter estas colunas:
 
