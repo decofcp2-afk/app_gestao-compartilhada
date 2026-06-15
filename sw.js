@@ -1,4 +1,4 @@
-var CACHE_NAME = 'app-gestao-reitoria-v4';
+var CACHE_NAME = 'app-gestao-compartilhada-v4';
 
 var CORE_ASSETS = [
   './',
@@ -24,7 +24,7 @@ self.addEventListener('activate', function(event) {
     caches.keys()
       .then(function(keys) {
         return Promise.all(keys
-          .filter(function(key) { return key.indexOf('app-gestao-reitoria-') === 0 && key !== CACHE_NAME; })
+          .filter(function(key) { return key.indexOf('app-gestao-compartilhada-') === 0 && key !== CACHE_NAME; })
           .map(function(key) { return caches.delete(key); }));
       })
       .then(function() { return self.clients.claim(); })

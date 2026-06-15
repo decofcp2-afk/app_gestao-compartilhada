@@ -11,18 +11,18 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="format-detection" content="telephone=no">
   <meta name="msapplication-TileColor" content="#1a3a5c">
-  <meta name="description" content="Sistema interno da Reitoria para gestao de etapas, fila, capacidade e avisos de prazo do SEL.">
-  <meta property="og:title" content="App Gestao de Etapas - Reitoria / SEL">
-  <meta property="og:description" content="Sistema interno da Reitoria para acompanhar processos, etapas, fila e capacidade da equipe SEL.">
+  <meta name="description" content="Sistema interno da Licitações Compartilhadas para gestao de etapas, fila, capacidade e avisos de prazo do SEL.">
+  <meta property="og:title" content="App Gestao de Etapas - Licitações Compartilhadas / SEL">
+  <meta property="og:description" content="Sistema interno da Licitações Compartilhadas para acompanhar processos, etapas, fila e capacidade da equipe SEL.">
   <meta property="og:type" content="website">
-  <meta property="og:url" content="https://decofcp2-afk.github.io/app_gestao-reitoria/">
+  <meta property="og:url" content="https://decofcp2-afk.github.io/app_gestao-compartilhada/">
   <meta name="twitter:card" content="summary">
-  <meta name="twitter:title" content="App Gestao de Etapas - Reitoria / SEL">
-  <meta name="twitter:description" content="Sistema interno da Reitoria para acompanhar processos, etapas, fila e capacidade da equipe SEL.">
+  <meta name="twitter:title" content="App Gestao de Etapas - Licitações Compartilhadas / SEL">
+  <meta name="twitter:description" content="Sistema interno da Licitações Compartilhadas para acompanhar processos, etapas, fila e capacidade da equipe SEL.">
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
-  <title>App Gestao de Etapas - Reitoria / SEL</title>
+  <title>App Gestao de Etapas - Licitações Compartilhadas / SEL</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
@@ -944,7 +944,7 @@ var CALENDARIO_MUNICIPIO = String((window.APPSEL_CONFIG && window.APPSEL_CONFIG.
 // 'corridos' = conta todos os dias; 'uteis' = pula sáb/dom e feriados.
 // Sincronizado com o backend via payload do calendário (espelha o GS).
 var MODO_CONTAGEM_PRAZOS = 'corridos';
-var PAINEL_URL = String((window.APPSEL_CONFIG && window.APPSEL_CONFIG.painelUrl) || 'https://decofcp2-afk.github.io/painel-contratacoes-reitoria/').trim();
+var PAINEL_URL = String((window.APPSEL_CONFIG && window.APPSEL_CONFIG.painelUrl) || 'https://decofcp2-afk.github.io/painel-contratacoes-compartilhada/').trim();
 var HIST       = [];
 var CAP_DATA   = null;
 var PROC_ATI   = null;  // processo atualmente aberto
@@ -1551,7 +1551,7 @@ function confirmarTroca() {
 
 function abrirPainel_(ev) {
   if (ev && typeof ev.preventDefault === 'function') ev.preventDefault();
-  var url = PAINEL_URL || 'https://decofcp2-afk.github.io/painel-contratacoes-reitoria/';
+  var url = PAINEL_URL || 'https://decofcp2-afk.github.io/painel-contratacoes-compartilhada/';
   var win = window.open(url, '_blank');
   if (win) {
     try { win.opener = null; } catch (err) {}

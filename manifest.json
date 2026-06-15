@@ -1,8 +1,8 @@
 {
-  "name": "App Gestao de Etapas - Reitoria",
+  "name": "App Gestao de Etapas - Licitações Compartilhadas",
   "short_name": "App Gestao",
-  "description": "Sistema interno da Reitoria para gestao de etapas, fila, capacidade e avisos de prazo do SEL.",
-  "id": "https://decofcp2-afk.github.io/app_gestao-reitoria/",
+  "description": "Sistema interno da Licitações Compartilhadas para gestao de etapas, fila, capacidade e avisos de prazo do SEL.",
+  "id": "https://decofcp2-afk.github.io/app_gestao-compartilhada/",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

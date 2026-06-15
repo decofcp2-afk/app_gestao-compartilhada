@@ -63,7 +63,7 @@ function _chefiaEmailFallback_() {
 // URL pública do Painel de Contratações (GitHub Pages), usada nos e-mails ao
 // setor requisitante. Pode ser sobrescrita via propriedade SEL_PAINEL_URL.
 function _painelUrl_() {
-  return _configProp_('SEL_PAINEL_URL', 'https://decofcp2-afk.github.io/painel-contratacoes-reitoria/');
+  return _configProp_('SEL_PAINEL_URL', 'https://decofcp2-afk.github.io/painel-contratacoes-compartilhada/');
 }
 
 function _withAppLock_(acao, fn) {
@@ -2038,7 +2038,7 @@ function enviarAvisosPrazo(modo) {
     var painelHtml = paraRequisitante
       ? '<p style="margin:14px 0 0;padding:12px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;font-size:13px;">'
         + '💡 Para acompanhar as etapas e os prazos deste e dos demais processos de contratação, acesse o nosso '
-        + '<a href="' + htmlEsc_(_painelUrl_()) + '" style="color:#1d4ed8;font-weight:700;">Painel de Contratações — Reitoria / SEL</a>.'
+        + '<a href="' + htmlEsc_(_painelUrl_()) + '" style="color:#1d4ed8;font-weight:700;">Painel de Contratações — Licitações Compartilhadas / SEL</a>.'
         + '</p>'
       : '';
     var subt = (tipo === 'vencido' ? '⚠️ Etapas vencidas' : '⏰ Prazos próximos') + (subtituloExtra ? ' · ' + subtituloExtra : '') + ' · Colégio Pedro II';

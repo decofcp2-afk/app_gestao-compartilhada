@@ -1,4 +1,4 @@
-# App Gestao da Reitoria
+# App Gestão das Licitações Compartilhadas
 
 Aplicacao interna da equipe SEL/SEPMA para gestao das etapas dos processos, fila, capacidade, historico, configuracoes, e-mails e avisos de prazo.
 
@@ -7,9 +7,9 @@ Este projeto foi separado do Painel de Contratacoes. O App Gestao deve ficar em 
 ## Estrutura
 
 ```text
-app_gestao-reitoria/
+app_gestao-compartilhada/
 |-- index.html              pagina estatica publicada no GitHub Pages
-|-- config.js               URL publica do Apps Script da DECOF
+|-- config.js               URL publica do Apps Script das Licitações Compartilhadas
 |-- CHECKLIST_PUBLICACAO.md roteiro de publicacao e testes
 |-- apps-script/
 |   `-- Code.gs             backend do App Gestao para copiar no Apps Script
