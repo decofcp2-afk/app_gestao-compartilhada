@@ -1,10 +1,8 @@
 window.APPSEL_CONFIG = {
-  // Cole aqui a URL /exec da implantacao Web App do Apps Script do APP GESTAO das Licitacoes Compartilhadas.
-  // Exemplo: https://script.google.com/macros/s/SEU_ID_DE_IMPLANTACAO/exec
-  apiUrl: "COLE_AQUI_A_URL_EXEC_DO_APPS_SCRIPT_DO_APP_GESTAO_COMPARTILHADA/exec",
+  // URL /exec do Apps Script do APP GESTAO das Licitacoes Compartilhadas.
+  apiUrl: "https://script.google.com/macros/s/AKfycby5j-Zw5x2nDHl_r2sieCqvayWBdYViRc26piSGntI75OhdUcAasp3Lnra3atA3XhVB/exec",
 
-  // Municipio usado para simular prazos no navegador. O Apps Script tambem
-  // deve ter SEL_MUNICIPIO_CALENDARIO com o mesmo valor.
+  // Municipio usado para simular prazos no navegador (igual ao SEL_MUNICIPIO_CALENDARIO no Apps Script).
   municipioCalendario: "Rio de Janeiro",
 
   // Tempo maximo de espera das chamadas ao Apps Script.
