@@ -863,6 +863,9 @@ function _apiCallAppSEL_(method, args) {
     salvarOrdemFilaApp: salvarOrdemFilaApp,
     regredirEtapa: regredirEtapa,
     devolverProcessoFilaApp: devolverProcessoFilaApp,
+    salvarNumeroProcessoApp: salvarNumeroProcessoApp,
+    salvarSrpProcessoApp: salvarSrpProcessoApp,
+    excluirProcessoApp: excluirProcessoApp,
     concluirEtapa: concluirEtapa,
     iniciarProcessos: iniciarProcessos,
     instalarTriggerAvisos: instalarTriggerAvisos,
@@ -2984,6 +2987,102 @@ function _atualizarObjetoCapacidade_(pid, nome) {
     }
   }
   return atualizados;
+}
+
+/** ── Edição de Nº SUAP / SRP e exclusão pela Fila (chefia) ─────────────────
+ *  Adicionado para permitir, na Fila, editar número e SRP do processo e excluí-lo.
+ *  Seguem o mesmo padrão das demais funções de escrita (auth de chefia + ProcessoID).
+ */
+function salvarNumeroProcessoApp(params) {
+  return _withAppLockResult_('salvarNumeroProcessoApp', function() {
+    try {
+      params = params || {};
+      _authRequire_(params.authToken, true);
+      var pid = String(params.processoId || '').trim();
+      var numero = String(params.numero || '').trim();
+      if (!pid) throw new Error('Processo não informado.');
+      if (numero.length < 3) throw new Error('Informe o número do processo.');
+      if (numero.length > 60) numero = numero.substring(0, 60).trim();
+      var shP = _ss_().getSheetByName(ABA_PROC);
+      if (!shP) throw new Error('Aba de processos não encontrada.');
+      var lP = _garantirColunas_(shP, 'ProcessoID', ['N° SUAP']);
+      var hP = lP.header;
+      var iId = hP.indexOf('ProcessoID');
+      var iNum = hP.indexOf('N° SUAP');
+      if (iId < 0 || iNum < 0) throw new Error('Colunas ProcessoID/N° SUAP não encontradas.');
+      for (var i = lP.hIdx + 1; i < lP.values.length; i++) {
+        if (String(lP.values[i][iId] || '').trim() === pid) {
+          shP.getRange(i + 1, iNum + 1).setValue(numero);
+          _limparCacheCapacidade_();
+          return { ok: true, numero: numero };
+        }
+      }
+      throw new Error('Processo não encontrado.');
+    } catch (e) { return { ok: false, erro: e.message }; }
+  });
+}
+
+function salvarSrpProcessoApp(params) {
+  return _withAppLockResult_('salvarSrpProcessoApp', function() {
+    try {
+      params = params || {};
+      _authRequire_(params.authToken, true);
+      var pid = String(params.processoId || '').trim();
+      if (!pid) throw new Error('Processo não informado.');
+      var ehSrp = (params.srp === true || _isSim_(params.srp));
+      var valor = ehSrp ? 'Sim' : 'Não';
+      var shP = _ss_().getSheetByName(ABA_PROC);
+      if (!shP) throw new Error('Aba de processos não encontrada.');
+      var lP = _garantirColunas_(shP, 'ProcessoID', ['Tem IRP?']);
+      var hP = lP.header;
+      var iId = hP.indexOf('ProcessoID');
+      var iSrp = hP.indexOf('Tem IRP?');
+      if (iId < 0 || iSrp < 0) throw new Error('Colunas ProcessoID/Tem IRP? não encontradas.');
+      for (var i = lP.hIdx + 1; i < lP.values.length; i++) {
+        if (String(lP.values[i][iId] || '').trim() === pid) {
+          shP.getRange(i + 1, iSrp + 1).setValue(valor);
+          _limparCacheCapacidade_();
+          return { ok: true, srp: ehSrp };
+        }
+      }
+      throw new Error('Processo não encontrado.');
+    } catch (e) { return { ok: false, erro: e.message }; }
+  });
+}
+
+function excluirProcessoApp(params) {
+  return _withAppLockResult_('excluirProcessoApp', function() {
+    try {
+      params = params || {};
+      _authRequire_(params.authToken, true);
+      var pid = String(params.processoId || '').trim();
+      if (!pid) throw new Error('Processo não informado.');
+      var ss = _ss_();
+      var etapasRemovidas = 0;
+      var shE = ss.getSheetByName(ABA_ETP);
+      if (shE) {
+        var lE = _lerAba_(shE, 'ProcessoID');
+        var iIdE = lE.header.indexOf('ProcessoID');
+        if (iIdE >= 0) {
+          for (var e = lE.values.length - 1; e > lE.hIdx; e--) {
+            if (String(lE.values[e][iIdE] || '').trim() === pid) { shE.deleteRow(e + 1); etapasRemovidas++; }
+          }
+        }
+      }
+      var shP = ss.getSheetByName(ABA_PROC);
+      if (!shP) throw new Error('Aba de processos não encontrada.');
+      var lP = _lerAba_(shP, 'ProcessoID');
+      var iIdP = lP.header.indexOf('ProcessoID');
+      if (iIdP < 0) throw new Error('Coluna ProcessoID não encontrada.');
+      var removido = false;
+      for (var p = lP.values.length - 1; p > lP.hIdx; p--) {
+        if (String(lP.values[p][iIdP] || '').trim() === pid) { shP.deleteRow(p + 1); removido = true; }
+      }
+      if (!removido) throw new Error('Processo não encontrado.');
+      _limparCacheCapacidade_();
+      return { ok: true, etapasRemovidas: etapasRemovidas };
+    } catch (e) { return { ok: false, erro: e.message }; }
+  });
 }
 
 function salvarNomeProcessoFilaApp(params) {
