@@ -3190,28 +3190,20 @@ function editarSrpFila_(pid){
   if(!isChefeAtual_()) return;
   var p=(FILA_ORDER||[]).find(function(x){return x && x.id===pid;});
   if(!p) return;
-  function _srpTruthy(v){ if(v===true) return true; if(v===false||v==null||v==='') return false; return /^(sim|s|true|1)$/i.test(String(v).trim()); }
-  var d=null, atual=false;
-  try{
-    d=(window.DATA||[]).find(function(x){return x && (x.id===pid || x.pid===pid);});
-    var cands=[ d?d.temIRP:undefined, d?d.irp:undefined, p.temIRP, p.irp, p.srp ];
-    for(var k=0;k<cands.length;k++){ var v=cands[k]; if(v!==undefined && v!==null && v!==''){ atual=_srpTruthy(v); break; } }
-  }catch(e){}
-  var alvo=!atual;
-  var msg = alvo ? 'Marcar este processo como SRP (Registro de Preços)?' : 'Remover a marcação de SRP deste processo? (a etapa de IRP volta a "Não se aplica")';
-  dialogoConfirmar_('SRP — Registro de Preços', msg, function(){
-    google.script.run
-      .withSuccessHandler(function(res){
-        if(res && res.ok){
-          try{ p.temIRP=alvo; p.irp=alvo; p.srp=alvo; if(d){ d.temIRP=alvo; d.irp=alvo; } }catch(e){}
-          renderFila_();
-          toast(alvo?'Processo marcado como SRP.':'Marcação de SRP removida.','ok');
-          setTimeout(carregarDados,500);
-        } else { toast('Erro: '+((res&&res.erro)?res.erro:'Não foi possível salvar.'),'err'); }
-      })
-      .withFailureHandler(function(e){ toast('Erro: '+(e.message||e),'err'); })
-      .salvarSrpProcessoApp({ processoId: pid, srp: alvo, authToken: AUTH_TOKEN });
-  }, alvo?'Marcar SRP':'Remover SRP');
+  function _abrirSrp(atual){
+    var alvo=!atual;
+    var msg=alvo?'Marcar este processo como SRP (Registro de Preços)?':'Remover a marcação de SRP deste processo? (a etapa de IRP volta a "Não se aplica")';
+    dialogoConfirmar_('SRP — Registro de Preços', msg, function(){
+      google.script.run
+        .withSuccessHandler(function(res){ if(res && res.ok){ renderFila_(); toast(alvo?'Processo marcado como SRP.':'Marcação de SRP removida.','ok'); setTimeout(carregarDados,500);} else { toast('Erro: '+((res&&res.erro)?res.erro:'Não foi possível salvar.'),'err'); } })
+        .withFailureHandler(function(e){ toast('Erro: '+(e.message||e),'err'); })
+        .salvarSrpProcessoApp({ processoId: pid, srp: alvo, authToken: AUTH_TOKEN });
+    }, alvo?'Marcar SRP':'Remover SRP');
+  }
+  google.script.run
+    .withSuccessHandler(function(estado){ _abrirSrp(!!(estado && estado.ok && estado.srp)); })
+    .withFailureHandler(function(){ _abrirSrp(false); })
+    .lerSrpProcessoApp({ processoId: pid, authToken: AUTH_TOKEN });
 }
 function excluirDemandaFila_(pid){
   if(!isChefeAtual_()) return;
