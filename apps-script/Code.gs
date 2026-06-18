@@ -865,6 +865,7 @@ function _apiCallAppSEL_(method, args) {
     devolverProcessoFilaApp: devolverProcessoFilaApp,
     salvarNumeroProcessoApp: salvarNumeroProcessoApp,
     salvarSrpProcessoApp: salvarSrpProcessoApp,
+    lerSrpProcessoApp: lerSrpProcessoApp,
     excluirProcessoApp: excluirProcessoApp,
     concluirEtapa: concluirEtapa,
     iniciarProcessos: iniciarProcessos,
@@ -3015,6 +3016,30 @@ function salvarNumeroProcessoApp(params) {
           shP.getRange(i + 1, iNum + 1).setValue(numero);
           _limparCacheCapacidade_();
           return { ok: true, numero: numero };
+        }
+      }
+      throw new Error('Processo não encontrado.');
+    } catch (e) { return { ok: false, erro: e.message }; }
+  });
+}
+
+function lerSrpProcessoApp(params) {
+  return _withAppLockResult_('lerSrpProcessoApp', function() {
+    try {
+      params = params || {};
+      _authRequire_(params.authToken, true);
+      var pid = String(params.processoId || '').trim();
+      if (!pid) throw new Error('Processo não informado.');
+      var shP = _ss_().getSheetByName(ABA_PROC);
+      if (!shP) throw new Error('Aba de processos não encontrada.');
+      var lP = _garantirColunas_(shP, 'ProcessoID', ['Tem IRP?']);
+      var hP = lP.header;
+      var iId = hP.indexOf('ProcessoID');
+      var iSrp = hP.indexOf('Tem IRP?');
+      if (iId < 0 || iSrp < 0) throw new Error('Colunas ProcessoID/Tem IRP? não encontradas.');
+      for (var i = lP.hIdx + 1; i < lP.values.length; i++) {
+        if (String(lP.values[i][iId] || '').trim() === pid) {
+          return { ok: true, srp: _isSim_(String(lP.values[i][iSrp] || '').trim()) };
         }
       }
       throw new Error('Processo não encontrado.');
